@@ -37,6 +37,34 @@ class SeolithTilesGame {
       scope: 'global',
       sortBy: 'time',
     };
+
+    // Persistent anonymous visitor session ID for geo-analytics
+    try {
+      this.sessionId =
+        localStorage.getItem('seolith_session_id') ||
+        'sess_' + Math.random().toString(36).slice(2, 11) + '_' + Date.now().toString(36);
+      localStorage.setItem('seolith_session_id', this.sessionId);
+    } catch (_) {
+      this.sessionId = 'sess_' + Math.random().toString(36).slice(2, 10);
+    }
+    this.refTag = '';
+  }
+
+  trackEvent(eventType, levelId = this.currentLevelId) {
+    try {
+      fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: this.sessionId,
+          playerName: this.settings.playerName || 'Anon',
+          eventType,
+          levelId,
+          referrer: document.referrer || '',
+          refTag: this.refTag || '',
+        }),
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   async init() {
@@ -80,7 +108,8 @@ class SeolithTilesGame {
     this.checkSavedSnapshot();
     this.updateBoostBadge();
 
-    // 7. Fetch edge geo-location in background
+    // 7. Log Visitor Pageview & Fetch Edge Geo-Location in background
+    this.trackEvent('pageview', initialLevel);
     this.leaderboard.fetchGeoAndTop({ levelId: initialLevel }).then((data) => {
       this.updateGeoBadge(data?.geo);
     });
@@ -98,6 +127,7 @@ class SeolithTilesGame {
       const target = params.get('target');
       const pts = params.get('pts');
       if (ref) {
+        this.refTag = ref;
         const banner = document.getElementById('challenge-banner');
         banner.textContent = `🎯 CHALLENGE FROM @${ref}: Beat ${target || '45.0'}s (${Number(pts || 60000).toLocaleString()} pts) on Vault #${level + 1}!`;
         banner.classList.remove('hidden');
@@ -599,6 +629,100 @@ class SeolithTilesGame {
     document.getElementById('btn-close-monetize').addEventListener('click', () => {
       document.getElementById('monetization-modal').classList.add('hidden');
     });
+
+    // Protected Admin Geo-Analytics Dashboard Modal
+    const adminModal = document.getElementById('admin-modal');
+    const savedAdminEmail = localStorage.getItem('seolith_admin_email') || 'admin@seolith.com';
+    const savedAdminKey = localStorage.getItem('seolith_admin_key') || '';
+    document.getElementById('admin-email-input').value = savedAdminEmail;
+    document.getElementById('admin-key-input').value = savedAdminKey;
+
+    document.getElementById('btn-admin-analytics').addEventListener('click', () => {
+      adminModal.classList.remove('hidden');
+      if (localStorage.getItem('seolith_admin_key')) {
+        this.loadAdminAnalytics();
+      }
+    });
+
+    document.getElementById('btn-close-admin').addEventListener('click', () => {
+      adminModal.classList.add('hidden');
+    });
+
+    document.getElementById('btn-admin-login').addEventListener('click', () => {
+      this.loadAdminAnalytics();
+    });
+  }
+
+  async loadAdminAnalytics() {
+    const email = document.getElementById('admin-email-input').value.trim();
+    const key = document.getElementById('admin-key-input').value.trim();
+    const msgEl = document.getElementById('admin-auth-msg');
+    msgEl.style.color = '#7dd3fc';
+    msgEl.textContent = 'Authenticating & fetching live Cloudflare D1 geo-analytics...';
+
+    try {
+      const res = await fetch('/api/admin/analytics', {
+        headers: {
+          'X-Admin-Email': email,
+          'X-Admin-Key': key,
+          Accept: 'application/json',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        msgEl.style.color = '#fca5a5';
+        msgEl.textContent = data.error || 'Unauthorized Admin Account or Access Key.';
+        return;
+      }
+
+      localStorage.setItem('seolith_admin_email', email);
+      localStorage.setItem('seolith_admin_key', key);
+
+      msgEl.style.color = '#a3e635';
+      msgEl.textContent = `✅ Authenticated as ${data.adminEmail} (${data.authMethod})`;
+      document.getElementById('admin-dashboard-content').classList.remove('hidden');
+
+      const s = data.summary || {};
+      document.getElementById('adm-unique').textContent = Number(s.uniqueVisitors || 0).toLocaleString();
+      document.getElementById('adm-views').textContent = Number(s.pageviews || 0).toLocaleString();
+      document.getElementById('adm-plays').textContent = `${Number(s.playsStarted || 0)} / ${Number(s.totalWins || 0)}`;
+      document.getElementById('adm-devices').textContent = `${Number(s.mobileEvents || 0)} / ${Number(s.desktopEvents || 0)}`;
+
+      const locTbody = document.getElementById('adm-locations-tbody');
+      const locs = data.byLocation || [];
+      locTbody.innerHTML = locs.length
+        ? locs
+            .map(
+              (l) => `<tr>
+              <td><strong>${this.escapeHtml(l.country || 'GL')}</strong></td>
+              <td>${this.escapeHtml(l.region || '-')}</td>
+              <td>${this.escapeHtml(l.city || '-')}</td>
+              <td>${Number(l.visits || 0).toLocaleString()}</td>
+              <td style="color:#a3e635;font-weight:700;">${Number(l.uniqueSessions || 0).toLocaleString()}</td>
+            </tr>`
+            )
+            .join('')
+        : '<tr><td colspan="5" style="text-align:center;">No location records yet.</td></tr>';
+
+      const recTbody = document.getElementById('adm-recent-tbody');
+      const recent = data.recentVisitors || [];
+      recTbody.innerHTML = recent.length
+        ? recent
+            .map(
+              (r) => `<tr>
+              <td><span style="color:#facc15;">${this.escapeHtml(r.eventType)}</span></td>
+              <td>${this.escapeHtml(r.playerName)}</td>
+              <td>${this.escapeHtml(r.city ? `${r.city}, ${r.country}` : r.country)} (${this.escapeHtml(r.colo || 'CF')})</td>
+              <td>${this.escapeHtml(r.deviceType)}</td>
+              <td>${this.escapeHtml(r.refTag ? `@${r.refTag}` : r.referrer ? r.referrer.slice(0, 24) : 'direct')}</td>
+            </tr>`
+            )
+            .join('')
+        : '<tr><td colspan="5" style="text-align:center;">No recent events yet.</td></tr>';
+    } catch (err) {
+      msgEl.style.color = '#fca5a5';
+      msgEl.textContent = 'Error connecting to edge analytics endpoint.';
+    }
   }
 
   async refreshFeedbackList() {
@@ -699,6 +823,7 @@ class SeolithTilesGame {
     document.getElementById('aim-banner').style.opacity = '0';
     const stats = SeolithStorage.incrementPlayCount();
     this.updateGeoBadge(this.leaderboard.geo);
+    this.trackEvent('play_start', this.currentLevelId);
     if (stats.proUnlocked) {
       this.wasm.trigger_bonus_capsule(5);
     }
@@ -805,6 +930,7 @@ class SeolithTilesGame {
 
   onGameEnd(status) {
     SeolithStorage.clearLiveSnapshot();
+    this.trackEvent(status === 2 ? 'win' : 'lose', this.currentLevelId);
     const elapsedMs = this.wasm.get_elapsed_ms();
     const elapsedSec = (elapsedMs / 1000).toFixed(1);
     const score = this.wasm.get_score();

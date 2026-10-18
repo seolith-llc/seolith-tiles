@@ -1,6 +1,6 @@
 {
   "name": "seolith-tiles",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Satisfying Micro-Tile Brick Breaker built with Rust (WASM), Three.js, and Cloudflare Workers + D1",
@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "feedback:read": "node scripts/read-feedback.mjs",
+    "analytics:read": "node scripts/read-analytics.mjs",
+    "videos:generate": "node scripts/generate-viral-videos.mjs",
     "prompts:consolidate": "node scripts/consolidate-prompts.mjs"
   },
   "dependencies": {

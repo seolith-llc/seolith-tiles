@@ -1,8 +1,16 @@
 // worker/index.js
 // Cloudflare Worker serving static assets + Edge Geo-Location & Time-Windowed Leaderboards (D1)
-// + Tester Feedback & Bug Reporting API (/api/feedback) + Version Metadata (/api/version)
+// + Tester Feedback & Bug Reporting API (/api/feedback)
+// + Visitor Geo-Analytics & Admin Dashboard API (/api/analytics, /api/admin/analytics)
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
+
+// Default Admin Accounts (override via Cloudflare Worker Secret `ADMIN_EMAILS`)
+const DEFAULT_ADMIN_EMAILS = [
+  'admin@seolith.com',
+];
+// Never hardcode a key: set `ADMIN_ACCESS_KEY` as a Cloudflare Worker secret.
+const DEFAULT_ADMIN_KEY = '';
 
 function computeExpectedProof(levelId, score, elapsedMs, peakBalls) {
   let h = 0x811c9dc5 >>> 0;
@@ -58,7 +66,7 @@ async function ensureSchema(db) {
           tester_name TEXT NOT NULL DEFAULT 'Anonymous',
           category TEXT NOT NULL DEFAULT 'bug',
           severity TEXT NOT NULL DEFAULT 'normal',
-          version TEXT NOT NULL DEFAULT '1.1.0',
+          version TEXT NOT NULL DEFAULT '1.2.0',
           level_id INTEGER NOT NULL DEFAULT 0,
           message TEXT NOT NULL,
           device_info TEXT NOT NULL DEFAULT '',
@@ -69,8 +77,73 @@ async function ensureSchema(db) {
         )`
       )
       .run();
+
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS visitor_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          player_name TEXT NOT NULL DEFAULT 'Anon',
+          event_type TEXT NOT NULL DEFAULT 'pageview',
+          level_id INTEGER NOT NULL DEFAULT 0,
+          country TEXT NOT NULL DEFAULT 'GL',
+          region TEXT NOT NULL DEFAULT 'Global',
+          city TEXT NOT NULL DEFAULT '',
+          continent TEXT NOT NULL DEFAULT '',
+          timezone TEXT NOT NULL DEFAULT '',
+          colo TEXT NOT NULL DEFAULT '',
+          referrer TEXT NOT NULL DEFAULT '',
+          ref_tag TEXT NOT NULL DEFAULT '',
+          device_type TEXT NOT NULL DEFAULT 'desktop',
+          user_agent TEXT NOT NULL DEFAULT '',
+          day_key TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )`
+      )
+      .run();
+
     schemaInitialized = true;
   } catch (_) {}
+}
+
+function isAuthorizedAdmin(request, env) {
+  const url = new URL(request.url);
+
+  // 1. Check Cloudflare Access Zero-Trust Header (if Cloudflare Access is enabled on the domain)
+  const cfAccessEmail = (
+    request.headers.get('Cf-Access-Authenticated-User-Email') || ''
+  )
+    .toLowerCase()
+    .trim();
+
+  const allowedEmails = (
+    env.ADMIN_EMAILS ? env.ADMIN_EMAILS.split(',') : DEFAULT_ADMIN_EMAILS
+  ).map((e) => e.toLowerCase().trim());
+
+  if (cfAccessEmail && allowedEmails.includes(cfAccessEmail)) {
+    return { authorized: true, adminEmail: cfAccessEmail, method: 'cloudflare-access' };
+  }
+
+  // 2. Check Admin Email + Admin Key via Header or Query Params
+  const reqEmail = (
+    request.headers.get('X-Admin-Email') ||
+    url.searchParams.get('email') ||
+    ''
+  )
+    .toLowerCase()
+    .trim();
+  const reqKey = (
+    request.headers.get('X-Admin-Key') ||
+    url.searchParams.get('key') ||
+    ''
+  ).trim();
+
+  const expectedKey = env.ADMIN_ACCESS_KEY || DEFAULT_ADMIN_KEY;
+  if (allowedEmails.includes(reqEmail) && reqKey === expectedKey) {
+    return { authorized: true, adminEmail: reqEmail, method: 'admin-key' };
+  }
+
+  return { authorized: false, adminEmail: null, method: 'none' };
 }
 
 export default {
@@ -82,6 +155,8 @@ export default {
       region: cf.region || 'Global',
       city: cf.city || '',
       continent: cf.continent || 'NA',
+      timezone: cf.timezone || 'UTC',
+      colo: cf.colo || 'IAD',
     };
 
     // 1. Version Info Endpoint
@@ -89,14 +164,157 @@ export default {
       return Response.json(
         {
           version: APP_VERSION,
-          updatedAt: '2026-10-17T22:45:00-04:00',
+          updatedAt: '2026-10-18T08:25:00-04:00',
           geo,
         },
         { headers: SECURITY_HEADERS }
       );
     }
 
-    // 2. Tester Feedback & Bug Reporting Endpoint (Readable by AI Agent & Testers)
+    // 2. Visitor Geo-Analytics Ingestion Endpoint (POST /api/analytics)
+    if (url.pathname === '/api/analytics' && request.method === 'POST') {
+      await ensureSchema(env.DB);
+      try {
+        const body = await request.json();
+        const sessionId = String(body.sessionId || 'anon').slice(0, 48);
+        const playerName = String(body.playerName || 'Anon')
+          .replace(/[^\w\-\s.@]/g, '')
+          .trim()
+          .slice(0, 24) || 'Anon';
+        const eventType = [
+          'pageview',
+          'play_start',
+          'win',
+          'lose',
+          'share',
+          'pro_click',
+          'feedback',
+        ].includes(body.eventType)
+          ? body.eventType
+          : 'pageview';
+        const levelId = Math.max(0, Math.min(20, Number(body.levelId) || 0));
+        const referrer = String(body.referrer || request.headers.get('Referer') || '').slice(0, 180);
+        const refTag = String(body.refTag || '').slice(0, 32);
+        const ua = String(request.headers.get('User-Agent') || '').slice(0, 180);
+        const deviceType = /Mobile|Android|iPhone|iPad/i.test(ua) ? 'mobile' : 'desktop';
+        const { dayKey } = getTimeKeys(new Date());
+
+        if (env.DB) {
+          await env.DB.prepare(
+            `INSERT INTO visitor_events (
+              session_id, player_name, event_type, level_id,
+              country, region, city, continent, timezone, colo,
+              referrer, ref_tag, device_type, user_agent, day_key, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`
+          )
+            .bind(
+              sessionId,
+              playerName,
+              eventType,
+              levelId,
+              geo.country,
+              geo.region,
+              geo.city,
+              geo.continent,
+              geo.timezone,
+              geo.colo,
+              referrer,
+              refTag,
+              deviceType,
+              ua,
+              dayKey,
+              new Date().toISOString()
+            )
+            .run();
+        }
+        return Response.json({ ok: true, geo }, { headers: SECURITY_HEADERS });
+      } catch (err) {
+        return Response.json({ ok: false, error: err.message }, { status: 400, headers: SECURITY_HEADERS });
+      }
+    }
+
+    // 3. Protected Admin Geo-Analytics Dashboard Endpoint (GET /api/admin/analytics)
+    if (url.pathname === '/api/admin/analytics' && request.method === 'GET') {
+      await ensureSchema(env.DB);
+      const auth = isAuthorizedAdmin(request, env);
+      if (!auth.authorized) {
+        return Response.json(
+          {
+            ok: false,
+            error: 'Unauthorized Admin Account. Please provide a valid Admin Email (e.g. admin@seolith.com) and Admin Key.',
+          },
+          { status: 401, headers: SECURITY_HEADERS }
+        );
+      }
+
+      if (!env.DB) {
+        return Response.json({ ok: true, summary: {}, countries: [], cities: [], recent: [] }, { headers: SECURITY_HEADERS });
+      }
+
+      try {
+        // Summary totals
+        const totalsStmt = await env.DB.prepare(
+          `SELECT
+            COUNT(*) AS totalEvents,
+            COUNT(DISTINCT session_id) AS uniqueVisitors,
+            SUM(CASE WHEN event_type = 'pageview' THEN 1 ELSE 0 END) AS pageviews,
+            SUM(CASE WHEN event_type = 'play_start' THEN 1 ELSE 0 END) AS playsStarted,
+            SUM(CASE WHEN event_type = 'win' THEN 1 ELSE 0 END) AS totalWins,
+            SUM(CASE WHEN event_type = 'share' THEN 1 ELSE 0 END) AS totalShares,
+            SUM(CASE WHEN device_type = 'mobile' THEN 1 ELSE 0 END) AS mobileEvents,
+            SUM(CASE WHEN device_type = 'desktop' THEN 1 ELSE 0 END) AS desktopEvents
+           FROM visitor_events`
+        ).first();
+
+        // Top Countries & Regions
+        const { results: byCountry } = await env.DB.prepare(
+          `SELECT country, region, city, COUNT(*) AS visits, COUNT(DISTINCT session_id) AS uniqueSessions
+           FROM visitor_events
+           GROUP BY country, region, city
+           ORDER BY visits DESC
+           LIMIT 25`
+        ).all();
+
+        // Top Referrers / Viral Challenge Tags (?ref=...)
+        const { results: byReferral } = await env.DB.prepare(
+          `SELECT ref_tag AS refTag, referrer, COUNT(*) AS count
+           FROM visitor_events
+           WHERE ref_tag != '' OR referrer != ''
+           GROUP BY ref_tag, referrer
+           ORDER BY count DESC
+           LIMIT 15`
+        ).all();
+
+        // Recent Live Visitor Stream
+        const { results: recentVisitors } = await env.DB.prepare(
+          `SELECT id, session_id AS sessionId, player_name AS playerName, event_type AS eventType, level_id AS levelId,
+                  country, region, city, colo, timezone, device_type AS deviceType, ref_tag AS refTag, referrer, created_at AS createdAt
+           FROM visitor_events
+           ORDER BY id DESC
+           LIMIT 40`
+        ).all();
+
+        return Response.json(
+          {
+            ok: true,
+            adminEmail: auth.adminEmail,
+            authMethod: auth.method,
+            summary: totalsStmt || {},
+            byLocation: byCountry || [],
+            byReferral: byReferral || [],
+            recentVisitors: recentVisitors || [],
+          },
+          { headers: SECURITY_HEADERS }
+        );
+      } catch (err) {
+        return Response.json(
+          { ok: false, error: err.message },
+          { status: 500, headers: SECURITY_HEADERS }
+        );
+      }
+    }
+
+    // 4. Tester Feedback & Bug Reporting Endpoint
     if (url.pathname === '/api/feedback') {
       await ensureSchema(env.DB);
       if (request.method === 'GET') {
@@ -197,7 +415,7 @@ export default {
       }
     }
 
-    // 3. Leaderboards Endpoint (Daily, Weekly, Monthly, Yearly + Geo Scope)
+    // 5. Leaderboards Endpoint
     if (url.pathname === '/api/leaderboard') {
       if (request.method === 'GET') {
         const period = url.searchParams.get('period') || 'daily';

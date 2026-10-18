@@ -1,17 +1,27 @@
 // src/releases.js
 // Version Registry & Release Notes History for Seolith Tiles
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 export const RELEASE_NOTES = [
   {
+    version: '1.2.0',
+    date: '2026-10-18',
+    title: 'Admin Geo-Analytics Dashboard, Visitor Telemetry & Autonomous 60FPS Video Showcase',
+    highlights: [
+      '📊 Protected Admin Geo-Analytics Dashboard: Added real-time visitor & gameplay telemetry (/api/analytics & /api/admin/analytics) backed by Cloudflare D1 and request.cf edge metadata (Country, Region/State, City, Edge Colo, Timezone, Device Type, and ?ref= Viral Referral Tags).',
+      '🔐 Multi-Admin Access Control: Supports Cloudflare Access Zero-Trust headers (Cf-Access-Authenticated-User-Email) as well as Admin Account Email + Secret Key sign-in directly inside the app (📊 Admin button).',
+      '🎬 Autonomous 60FPS Gameplay Videos: Added scripts/generate-viral-videos.mjs and hosted 60FPS vertical MP4 showcase clips with synthesized ASMR audio.',
+    ],
+  },
+  {
     version: '1.1.0',
     date: '2026-10-17',
-    title: 'Watertight Steel Physics, Tester Feedback Hub, Viral Social Referral &Dev Story',
+    title: 'Watertight Steel Physics, Tester Feedback Hub, Viral Social Referral & Dev Story',
     highlights: [
-      '🧱 Fixed Hard-Lined Brick Bleeding: Upgraded Rust WASM physics engine to multi-pass Circle-vs-AABB closest-point collision with 16x sub-stepping and watertight 2-tile-thick diagonal steel walls so balls never bleed or tunnel through narrow shafts.',
+      '🧱 Fixed Hard-Lined Brick Bleeding: Upgraded Rust WASM physics engine to multi-pass Circle-vs-AABB closest-point collision with 16x sub-stepping and watertight 2-tile-thick diagonal steel walls.',
       '💬 Live Tester Feedback Collector: Added in-app Feedback & Bug Triage drawer backed by Cloudflare D1 (/api/feedback) so testers can submit bugs/ideas and the AI agent can read & resolve them directly.',
-      '🏷️ Version Badge & Release Notes: Added interactive version badge (v1.1.0) in the header with full changelog history.',
+      '🏷️ Version Badge & Release Notes: Added interactive version badge in the header with full changelog history.',
       '📖 Novice Developer Guide & Diagrams: Added an in-app & markdown "How It Was Built" Engineering Post with Architecture & Sequence diagrams.',
       '🚀 Viral Social Sharing & Early Monetization: Added 1-click X (Twitter), WhatsApp, Reddit, and Challenge Referral Link sharing (?ref=handle) that rewards sharers with instant x3 Cascade Boosts & Pro Pass unlocks.',
     ],

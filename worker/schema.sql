@@ -1,5 +1,8 @@
 -- worker/schema.sql
--- Cloudflare D1 Schema for Seolith Tiles Time & Geo-Location Leaderboards + Tester Feedback Collector
+-- Cloudflare D1 Schema for Seolith Tiles:
+-- 1. Time & Geo-Location Leaderboards (leaderboard_runs)
+-- 2. Tester Feedback & Bug Triage (tester_feedback)
+-- 3. Visitor Geo-Analytics & Telemetry (visitor_events)
 
 CREATE TABLE IF NOT EXISTS leaderboard_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,20 +29,43 @@ CREATE INDEX IF NOT EXISTS idx_lb_yearly_time ON leaderboard_runs(level_id, year
 CREATE INDEX IF NOT EXISTS idx_lb_country ON leaderboard_runs(level_id, country, elapsed_ms ASC);
 CREATE INDEX IF NOT EXISTS idx_lb_region ON leaderboard_runs(level_id, country, region, elapsed_ms ASC);
 
--- Tester Feedback & Bug Report Table (Readable by the AI Agent & Developers via /api/feedback)
 CREATE TABLE IF NOT EXISTS tester_feedback (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   tester_name TEXT NOT NULL DEFAULT 'Anonymous',
-  category TEXT NOT NULL DEFAULT 'bug', -- 'bug' | 'improvement' | 'physics' | 'design' | 'monetization'
-  severity TEXT NOT NULL DEFAULT 'normal', -- 'low' | 'normal' | 'high' | 'critical'
-  version TEXT NOT NULL DEFAULT '1.1.0',
+  category TEXT NOT NULL DEFAULT 'bug',
+  severity TEXT NOT NULL DEFAULT 'normal',
+  version TEXT NOT NULL DEFAULT '1.2.0',
   level_id INTEGER NOT NULL DEFAULT 0,
   message TEXT NOT NULL,
   device_info TEXT NOT NULL DEFAULT '',
   country TEXT NOT NULL DEFAULT 'GL',
   region TEXT NOT NULL DEFAULT 'Global',
-  status TEXT NOT NULL DEFAULT 'open', -- 'open' | 'triaged' | 'resolved'
+  status TEXT NOT NULL DEFAULT 'open',
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON tester_feedback(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS visitor_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  player_name TEXT NOT NULL DEFAULT 'Anon',
+  event_type TEXT NOT NULL DEFAULT 'pageview', -- 'pageview' | 'play_start' | 'win' | 'share' | 'pro_click'
+  level_id INTEGER NOT NULL DEFAULT 0,
+  country TEXT NOT NULL DEFAULT 'GL',
+  region TEXT NOT NULL DEFAULT 'Global',
+  city TEXT NOT NULL DEFAULT '',
+  continent TEXT NOT NULL DEFAULT '',
+  timezone TEXT NOT NULL DEFAULT '',
+  colo TEXT NOT NULL DEFAULT '',
+  referrer TEXT NOT NULL DEFAULT '',
+  ref_tag TEXT NOT NULL DEFAULT '',
+  device_type TEXT NOT NULL DEFAULT 'desktop',
+  user_agent TEXT NOT NULL DEFAULT '',
+  day_key TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_day ON visitor_events(day_key, event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_country ON visitor_events(country, region, city);
+CREATE INDEX IF NOT EXISTS idx_analytics_created ON visitor_events(created_at DESC);

@@ -591,7 +591,7 @@
           <div>
             <div class="brand-title">
               Seolith Tiles
-              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.1.0</span>
+              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.2.0</span>
             </div>
             <div id="geo-badge" style="font-size: 10px; color: var(--muted);">📍 Global Edge • Play #1</div>
           </div>
@@ -603,6 +603,7 @@
           <button id="btn-record" class="icon-btn" title="Record 60FPS Gameplay Clip">⏺ Rec</button>
           <button id="btn-customize" class="icon-btn" title="Customize Screen, Colors, 3D & Audio">🎨 Design</button>
           <button id="btn-leaderboard" class="icon-btn" title="Daily, Weekly, Monthly, Yearly & Local Toppers">🏆 Ranks</button>
+          <button id="btn-admin-analytics" class="icon-btn" title="Admin Geo-Analytics Dashboard (Authorized Accounts)">📊 Admin</button>
           <button id="btn-pro-shop" class="icon-btn gold-btn" title="Unlock Seolith Pro & Unlimited Boosts">👑 Pro</button>
         </div>
       </div>
@@ -963,6 +964,92 @@ Player          Three.js UI       Rust WASM         Cloudflare D1
         <button id="btn-watch-rewarded" class="icon-btn gold-btn">🎬 5s Sponsor Spot (+3 Boosts)</button>
         <button id="btn-share-for-boosts" class="icon-btn active">𝕏 Share on X (+3 Boosts)</button>
         <button id="btn-close-monetize" class="icon-btn">Later</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Protected Admin Geo-Analytics Dashboard Modal -->
+  <div id="admin-modal" class="overlay-modal hidden">
+    <div class="modal-card" style="max-width:540px;">
+      <div class="win-title">📊 Admin Geo-Analytics & Visitor Telemetry</div>
+      <div class="win-subtitle">
+        Real-time Cloudflare Edge (<code>request.cf</code>) visitor locations, sessions, device split & viral referral tags
+      </div>
+
+      <!-- Admin Auth Gate -->
+      <div id="admin-login-box" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;">
+        <div class="form-row" style="border:none;padding:4px 0;">
+          <span>Admin Account Email</span>
+          <input type="text" id="admin-email-input" placeholder="admin@seolith.com" style="width:190px;" />
+        </div>
+        <div class="form-row" style="border:none;padding:4px 0;">
+          <span>Admin Access Key</span>
+          <input type="password" id="admin-key-input" placeholder="Admin Key" style="background:rgba(255,255,255,0.08);border:1px solid var(--border);color:#fff;padding:6px 10px;border-radius:7px;width:190px;" />
+        </div>
+        <div id="admin-auth-msg" style="font-size:11px;color:#fca5a5;margin:4px 0;"></div>
+        <button id="btn-admin-login" class="primary-btn" style="margin-top:4px;">🔓 Load Live Edge Analytics</button>
+      </div>
+
+      <!-- Admin Dashboard Content (Shown once authenticated) -->
+      <div id="admin-dashboard-content" class="hidden">
+        <div class="summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+          <div class="summary-box">
+            <span class="metric-label">Unique Visitors</span>
+            <span id="adm-unique" class="metric-val highlight">0</span>
+          </div>
+          <div class="summary-box">
+            <span class="metric-label">Pageviews</span>
+            <span id="adm-views" class="metric-val">0</span>
+          </div>
+          <div class="summary-box">
+            <span class="metric-label">Plays / Wins</span>
+            <span id="adm-plays" class="metric-val">0 / 0</span>
+          </div>
+          <div class="summary-box">
+            <span class="metric-label">Mobile / Desk</span>
+            <span id="adm-devices" class="metric-val">0 / 0</span>
+          </div>
+        </div>
+
+        <div style="text-align:left;font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;margin-top:8px;">
+          🌍 Top Visitor Locations (Country • Region • City)
+        </div>
+        <div style="max-height:130px;overflow-y:auto;">
+          <table class="lb-table">
+            <thead>
+              <tr>
+                <th>Country</th>
+                <th>Region / State</th>
+                <th>City</th>
+                <th>Events</th>
+                <th>Unique</th>
+              </tr>
+            </thead>
+            <tbody id="adm-locations-tbody"></tbody>
+          </table>
+        </div>
+
+        <div style="text-align:left;font-size:11px;font-weight:700;color:var(--cyan);text-transform:uppercase;margin-top:10px;">
+          ⚡ Recent Live Visitor Stream (Edge Colo & Referrer)
+        </div>
+        <div style="max-height:140px;overflow-y:auto;">
+          <table class="lb-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Player</th>
+                <th>Location (Colo)</th>
+                <th>Device</th>
+                <th>Ref / Source</th>
+              </tr>
+            </thead>
+            <tbody id="adm-recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-btn-row">
+        <button id="btn-close-admin" class="icon-btn">Close</button>
       </div>
     </div>
   </div>
