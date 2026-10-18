@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0c0e" />
-  <meta name="description" content="Seolith Tiles — Satisfying Micro-Tile Brick Breaker built with Rust (WebAssembly) & Three.js. Thread the vault, trigger 1,500x ball cascades, and climb the Global & Local Leaderboards." />
-  <title>SEOLITH TILES — Satisfying Micro-Tile Brick Breaker (Rust + Three.js)</title>
+  <meta name="description" content="Seolith Tiles v1.1.0 — Satisfying Micro-Tile Brick Breaker built with Rust (WebAssembly) & Three.js. Thread the vault, trigger 1,500x ball cascades, and climb the Global & Local Leaderboards." />
+  <title>SEOLITH TILES v1.1.0 — Satisfying Micro-Tile Brick Breaker (Rust + Three.js)</title>
   <style>
     :root {
       --bg-outer: #121316;
@@ -67,14 +67,16 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 7px 12px;
+      padding: 7px 10px;
       backdrop-filter: blur(12px);
+      gap: 6px;
+      flex-wrap: wrap;
     }
 
     .brand-group {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
     }
 
     .brand-logo {
@@ -93,24 +95,39 @@
 
     .brand-title {
       font-weight: 800;
-      font-size: 14px;
-      letter-spacing: 0.06em;
+      font-size: 13px;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .version-pill {
+      background: rgba(56, 189, 248, 0.16);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      color: #7dd3fc;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 99px;
+      cursor: pointer;
     }
 
     .hud-actions {
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
+      flex-wrap: wrap;
     }
 
     .icon-btn {
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 5px 9px;
+      padding: 5px 8px;
       border-radius: 8px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
@@ -128,6 +145,12 @@
       background: rgba(242, 106, 61, 0.22);
       border-color: var(--accent);
       color: #fed7aa;
+    }
+
+    .icon-btn.gold-btn {
+      background: rgba(250, 204, 21, 0.16);
+      border-color: rgba(250, 204, 21, 0.45);
+      color: #fde047;
     }
 
     .icon-btn.recording {
@@ -153,7 +176,7 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 9px;
-      padding: 5px 8px;
+      padding: 4px 8px;
       text-align: center;
     }
 
@@ -176,7 +199,7 @@
       color: var(--lime);
     }
 
-    /* Vault Progress Bar (matches the white/gray top progress bar in the X videos!) */
+    /* Vault Progress Bar */
     .progress-track {
       width: 100%;
       height: 5px;
@@ -190,6 +213,22 @@
       width: 0%;
       background: linear-gradient(90deg, #f8fafc, #facc15, #a3e635);
       transition: width 0.08s linear;
+    }
+
+    /* Challenge Banner when opened via social referral link (?ref=...) */
+    #challenge-banner {
+      background: linear-gradient(90deg, rgba(242, 106, 61, 0.22), rgba(250, 204, 21, 0.18));
+      border: 1px solid rgba(250, 204, 21, 0.45);
+      color: #fef08a;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    #challenge-banner.hidden {
+      display: none !important;
     }
 
     /* Main Arena Container */
@@ -224,7 +263,6 @@
       cursor: crosshair;
     }
 
-    /* Floating Capsule Text Labels ('x3', '+3', '<->', '[-]', '★') */
     #capsule-labels {
       position: absolute;
       inset: 0;
@@ -244,7 +282,6 @@
       white-space: nowrap;
     }
 
-    /* On-screen Launch / Aim Helper Banner */
     #aim-banner {
       position: absolute;
       bottom: 16%;
@@ -253,8 +290,8 @@
       background: rgba(15, 23, 42, 0.86);
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 99px;
-      padding: 6px 16px;
-      font-size: 12px;
+      padding: 6px 14px;
+      font-size: 11px;
       font-weight: 600;
       color: #e2e8f0;
       pointer-events: none;
@@ -281,7 +318,7 @@
     .control-group {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       flex-wrap: wrap;
     }
 
@@ -319,17 +356,17 @@
       transform: scale(0.96);
     }
 
-    /* Victory / Game Over Center Overlay (Matches the viral video's "Congratulations You win! ★★★" card!) */
+    /* Modals */
     .overlay-modal {
-      position: absolute;
+      position: fixed;
       inset: 0;
-      background: rgba(9, 10, 15, 0.72);
+      background: rgba(9, 10, 15, 0.78);
       backdrop-filter: blur(6px);
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 16px;
-      z-index: 35;
+      padding: 14px;
+      z-index: 50;
     }
 
     .overlay-modal.hidden {
@@ -338,35 +375,38 @@
 
     .modal-card {
       width: 100%;
-      max-width: 430px;
+      max-width: 480px;
       max-height: 90dvh;
       overflow-y: auto;
       background: #181a20;
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 16px;
-      padding: 20px;
+      padding: 18px;
       text-align: center;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     .win-title {
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 900;
       margin-bottom: 4px;
       color: #fff;
     }
 
     .win-subtitle {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--muted);
       margin-bottom: 10px;
+      line-height: 1.4;
     }
 
     .stars-row {
-      font-size: 28px;
+      font-size: 26px;
       letter-spacing: 6px;
       color: var(--gold);
-      margin: 8px 0 14px;
+      margin: 6px 0 12px;
       text-shadow: 0 0 16px rgba(250, 204, 21, 0.45);
     }
 
@@ -374,7 +414,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 8px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
 
     .summary-box {
@@ -387,12 +427,28 @@
     .modal-btn-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 7px;
       justify-content: center;
       margin-top: 12px;
     }
 
-    /* Customization & Leaderboard Tables */
+    .social-share-bar {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+
+    .social-share-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 7px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
     .form-row {
       display: flex;
       align-items: center;
@@ -401,6 +457,7 @@
       border-bottom: 1px solid rgba(255, 255, 255, 0.07);
       text-align: left;
       font-size: 13px;
+      gap: 8px;
     }
 
     .color-inputs {
@@ -417,20 +474,27 @@
       background: transparent;
     }
 
-    input[type="text"] {
+    input[type="text"], textarea {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--border);
       color: #fff;
-      padding: 6px 10px;
+      padding: 7px 10px;
       border-radius: 7px;
       font-size: 13px;
-      width: 150px;
+      font-family: inherit;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 76px;
+      resize: vertical;
+      margin-top: 6px;
     }
 
     .tabs-row {
       display: flex;
       gap: 4px;
-      margin: 10px 0;
+      margin: 8px 0;
       justify-content: center;
       flex-wrap: wrap;
     }
@@ -438,13 +502,13 @@
     .lb-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
+      margin-top: 8px;
       font-size: 12px;
       text-align: left;
     }
 
     .lb-table th, .lb-table td {
-      padding: 7px 6px;
+      padding: 6px 5px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     }
 
@@ -454,7 +518,40 @@
       text-transform: uppercase;
     }
 
-    /* Resume Banner */
+    .doc-box {
+      text-align: left;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #e2e8f0;
+      max-height: 330px;
+      overflow-y: auto;
+    }
+
+    .doc-box h4 {
+      color: var(--gold);
+      margin: 10px 0 4px;
+      font-size: 13px;
+    }
+
+    .doc-box ul {
+      padding-left: 18px;
+      margin-bottom: 8px;
+    }
+
+    .doc-box pre {
+      background: #090a0f;
+      padding: 8px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 10px;
+      color: #7dd3fc;
+      margin: 6px 0;
+    }
+
     #resume-toast {
       position: fixed;
       top: 14px;
@@ -492,18 +589,26 @@
         <div class="brand-group">
           <div class="brand-logo">S</div>
           <div>
-            <div class="brand-title">Seolith Tiles</div>
+            <div class="brand-title">
+              Seolith Tiles
+              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.1.0</span>
+            </div>
             <div id="geo-badge" style="font-size: 10px; color: var(--muted);">📍 Global Edge • Play #1</div>
           </div>
         </div>
 
         <div class="hud-actions">
-          <button id="btn-editor-toggle" class="icon-btn" title="Paint Custom Tunnel / Bricks">✏️ Paint</button>
+          <button id="btn-feedback" class="icon-btn" title="Tester Feedback & Bug Reports">💬 Feedback</button>
+          <button id="btn-share-top" class="icon-btn" title="Share Viral Challenge Link (+3 Free Boosts!)">📤 Share</button>
           <button id="btn-record" class="icon-btn" title="Record 60FPS Gameplay Clip">⏺ Rec</button>
           <button id="btn-customize" class="icon-btn" title="Customize Screen, Colors, 3D & Audio">🎨 Design</button>
           <button id="btn-leaderboard" class="icon-btn" title="Daily, Weekly, Monthly, Yearly & Local Toppers">🏆 Ranks</button>
+          <button id="btn-pro-shop" class="icon-btn gold-btn" title="Unlock Seolith Pro & Unlimited Boosts">👑 Pro</button>
         </div>
       </div>
+
+      <!-- Referral Challenge Banner (shown when arriving from a shared social link) -->
+      <div id="challenge-banner" class="hidden"></div>
 
       <div class="hud-metrics">
         <div class="metric-card">
@@ -535,37 +640,6 @@
         <canvas id="game-canvas"></canvas>
         <div id="capsule-labels"></div>
         <div id="aim-banner">Move to aim • Tap / Click or Space to launch into the shaft!</div>
-
-        <!-- Victory / Result Modal (Matches the viral X video overlay!) -->
-        <div id="result-modal" class="overlay-modal hidden">
-          <div class="modal-card">
-            <div id="result-title" class="win-title">Congratulations!</div>
-            <div id="result-subtitle" class="win-subtitle">You cleared the vault!</div>
-            <div id="result-stars" class="stars-row">★★★</div>
-
-            <div class="summary-grid">
-              <div class="summary-box">
-                <span class="metric-label">Clear Time</span>
-                <span id="res-time" class="metric-val">42.1s</span>
-              </div>
-              <div class="summary-box">
-                <span class="metric-label">Score</span>
-                <span id="res-score" class="metric-val">64,200</span>
-              </div>
-              <div class="summary-box">
-                <span class="metric-label">Peak Balls</span>
-                <span id="res-balls" class="metric-val highlight">980</span>
-              </div>
-            </div>
-
-            <div class="modal-btn-row">
-              <button id="btn-play-again" class="primary-btn">▶ Play Again</button>
-              <button id="btn-next-level" class="icon-btn active">⏭ Next Vault</button>
-              <button id="btn-share-run" class="icon-btn">📤 Share Clip / Card</button>
-              <button id="btn-download-video" class="icon-btn hidden">⬇ Save Video</button>
-            </div>
-          </div>
-        </div>
       </div>
     </main>
 
@@ -574,14 +648,176 @@
       <div class="control-group">
         <select id="select-level" class="ui-select" aria-label="Select Vault Level"></select>
         <button id="btn-restart" class="icon-btn" title="Reset Current Vault">↺ Reset</button>
+        <button id="btn-editor-toggle" class="icon-btn" title="Paint Custom Tunnel / Bricks">✏️ Paint</button>
       </div>
 
       <div class="control-group">
-        <button id="btn-boost-x3" class="icon-btn active" title="Trigger instant x3 Ball Multiplier!">⚡ x3 Boost</button>
+        <button id="btn-boost-x3" class="icon-btn active" title="Trigger instant x3 Ball Multiplier + Safety Star!">⚡ x3 Boost (<span id="boost-count">3</span>)</button>
         <button id="btn-sfx" class="icon-btn active" title="Toggle ASMR Pop Sound">🔊 ASMR</button>
         <button id="btn-music" class="icon-btn" title="Toggle Synthwave Music">🎵 Music</button>
       </div>
     </footer>
+  </div>
+
+  <!-- Victory / Result + Viral Social Share Modal -->
+  <div id="result-modal" class="overlay-modal hidden">
+    <div class="modal-card">
+      <div id="result-title" class="win-title">Congratulations!</div>
+      <div id="result-subtitle" class="win-subtitle">You cleared the vault!</div>
+      <div id="result-stars" class="stars-row">★★★</div>
+
+      <div class="summary-grid">
+        <div class="summary-box">
+          <span class="metric-label">Clear Time</span>
+          <span id="res-time" class="metric-val">42.1s</span>
+        </div>
+        <div class="summary-box">
+          <span class="metric-label">Score</span>
+          <span id="res-score" class="metric-val">64,200</span>
+        </div>
+        <div class="summary-box">
+          <span class="metric-label">Peak Balls</span>
+          <span id="res-balls" class="metric-val highlight">980</span>
+        </div>
+      </div>
+
+      <!-- Viral Social Growth & Referral Bar -->
+      <div class="social-share-bar">
+        <div class="social-share-title">🚀 Challenge Friends & Get +3 Free ⚡ x3 Boosts!</div>
+        <div class="modal-btn-row" style="margin-top:4px;">
+          <button id="btn-share-x" class="icon-btn active">𝕏 Post on X</button>
+          <button id="btn-share-wa" class="icon-btn">💬 WhatsApp</button>
+          <button id="btn-share-reddit" class="icon-btn">👽 Reddit</button>
+          <button id="btn-share-run" class="icon-btn gold-btn">📤 Card / Copy Link</button>
+          <button id="btn-download-video" class="icon-btn hidden">⬇ Save Video</button>
+        </div>
+      </div>
+
+      <div class="modal-btn-row">
+        <button id="btn-play-again" class="primary-btn">▶ Play Again</button>
+        <button id="btn-next-level" class="icon-btn active">⏭ Next Vault</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tester Feedback & Bug Triage Modal -->
+  <div id="feedback-modal" class="overlay-modal hidden">
+    <div class="modal-card">
+      <div class="win-title">💬 Tester Feedback & Bug Triage</div>
+      <div class="win-subtitle">
+        Spot a bug or have an idea? Submit it below—stored in Cloudflare D1 so our AI Agent & Dev Team can read and ship fixes directly!
+      </div>
+
+      <div class="form-row">
+        <span>Your Name / Handle</span>
+        <input type="text" id="fb-name" maxlength="28" placeholder="Tester Handle" />
+      </div>
+
+      <div class="form-row">
+        <span>Category & Severity</span>
+        <div style="display:flex;gap:6px;">
+          <select id="fb-category" class="ui-select">
+            <option value="bug">🐛 Bug Report</option>
+            <option value="physics">🧱 Physics / Wall Collision</option>
+            <option value="improvement">✨ Feature / Improvement</option>
+            <option value="design">🎨 UI / Theme / Audio</option>
+            <option value="monetization">💎 Monetization / Social</option>
+          </select>
+          <select id="fb-severity" class="ui-select">
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="text-align:left;margin-top:8px;font-size:12px;color:var(--muted);">
+        Describe what happened or what we should improve (v1.1.0):
+      </div>
+      <textarea id="fb-message" placeholder="E.g. In Level 1, the ball speed feels great! Suggestion: add a 5x ball capsule..."></textarea>
+
+      <div id="fb-status-msg" style="font-size:12px;margin-top:6px;color:var(--lime);"></div>
+
+      <div class="modal-btn-row">
+        <button id="btn-submit-feedback" class="primary-btn">🚀 Submit to Agent Queue</button>
+        <button id="btn-close-feedback" class="icon-btn">Close</button>
+      </div>
+
+      <div style="margin-top:14px;text-align:left;">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Recent Tester Submissions (Live D1 Feed)</div>
+        <div style="max-height:140px;overflow-y:auto;margin-top:4px;">
+          <table class="lb-table">
+            <thead>
+              <tr>
+                <th>Ver</th>
+                <th>Type</th>
+                <th>Tester</th>
+                <th>Feedback</th>
+              </tr>
+            </thead>
+            <tbody id="fb-list-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Release Notes & Novice Developer "How It Was Built" Modal -->
+  <div id="release-modal" class="overlay-modal hidden">
+    <div class="modal-card">
+      <div class="win-title">📦 Seolith Tiles <span style="color:var(--cyan);">v1.1.0</span></div>
+      <div class="win-subtitle">Release Notes & Novice Developer Engineering Guide</div>
+
+      <div class="tabs-row" id="release-tabs">
+        <button class="icon-btn active" data-tab="notes">📋 Release Notes</button>
+        <button class="icon-btn" data-tab="devpost">📖 How It Was Built (Dev Guide)</button>
+      </div>
+
+      <!-- Tab 1: Release Notes -->
+      <div id="tab-content-notes" class="doc-box"></div>
+
+      <!-- Tab 2: Novice Developer Post with Architecture & Sequence Diagrams -->
+      <div id="tab-content-devpost" class="doc-box hidden">
+        <h4>1. Why Normal JavaScript Slows Down at 1,500 Balls</h4>
+        <p>Checking 1,600 balls against 4,096 micro-tiles is 6.5 million checks per frame! If built with normal DOM elements or naive JS loops, balls tunnel ("bleed") through thin walls and mobile browsers freeze.</p>
+
+        <h4>2. Our 4-Pillar Solution (Rust + Three.js + WebAudio + Cloudflare)</h4>
+        <ul>
+          <li><strong>🦀 Rust WebAssembly Physics (<code>src-rust/lib.rs</code>)</strong>: Runs at near-native speed. Uses O(1) spatial grid lookups and 16x sub-stepped Circle-vs-AABB closest-point math so balls never bleed through 1-tile-thick steel shafts.</li>
+          <li><strong>🎨 Three.js InstancedMesh (<code>src/renderer.js</code>)</strong>: Draws all 6,400 tiles, 1,600 balls, and 1,200 shatter particles in just <strong>4 GPU draw calls</strong> using Zero-Copy WebAssembly RAM views.</li>
+          <li><strong>🔊 Procedural WebAudio Synth (<code>src/audio.js</code>)</strong>: Generates tactile ASMR woodblock pops & synthwave music mathematically with zero external MP3 downloads.</li>
+          <li><strong>☁️ Cloudflare Worker + D1 (<code>worker/index.js</code>)</strong>: Powers Global/Country/Region leaderboards and our live Tester Feedback queue.</li>
+        </ul>
+
+        <h4>3. System Architecture Diagram</h4>
+        <pre>
+[Player Input / Touch] ──► [Main UI & Three.js Renderer]
+                                  │  ▲ (Zero-Copy Float32Array / Uint8Array)
+                                  ▼  │
+                        [Rust WASM Physics Engine]
+                        (16x Substep Circle-AABB)
+                           ├──► [WebAudio ASMR Synth]
+                           ├──► [LocalStorage 2.5s Snapshot]
+                           └──► [Cloudflare Worker + D1 SQLite]
+                                 ├── /api/leaderboard (Daily/Weekly/Monthly/Yearly)
+                                 └── /api/feedback (Tester Triage Queue)</pre>
+
+        <h4>4. Gameplay & Feedback Sequence Diagram</h4>
+        <pre>
+Player          Three.js UI       Rust WASM         Cloudflare D1
+  │── Aim & Launch ──►│               │                   │
+  │                   │── step(dt) ──►│ (16x Circle-AABB) │
+  │                   │◄─ Zero-Copy ──│ (Tiles & Balls)   │
+  │                   │── Vault Won! ─► compute_proof()   │
+  │                   │── POST /api/leaderboard ─────────►│
+  │── Submit Bug ────►│── POST /api/feedback ────────────►│ (Agent Reads!)</pre>
+      </div>
+
+      <div class="modal-btn-row">
+        <button id="btn-close-release" class="primary-btn">Got It</button>
+      </div>
+    </div>
   </div>
 
   <!-- Customize Screen & Design Modal -->
@@ -592,7 +828,7 @@
 
       <div class="form-row">
         <span>Player Handle</span>
-        <input type="text" id="input-player-name" maxlength="18" placeholder="Your Handle" />
+        <input type="text" id="input-player-name" maxlength="18" placeholder="Your Handle" style="width:150px;" />
       </div>
 
       <div class="form-row">
@@ -658,13 +894,12 @@
     </div>
   </div>
 
-  <!-- Leaderboards Modal (Daily / Weekly / Monthly / Yearly + Location Scope) -->
+  <!-- Leaderboards Modal -->
   <div id="leaderboard-modal" class="overlay-modal hidden">
     <div class="modal-card">
       <div class="win-title">🏆 Time & Points Toppers</div>
       <div id="lb-location-subtitle" class="win-subtitle">Ranked by fastest clear time & points</div>
 
-      <!-- Time Window Tabs -->
       <div class="tabs-row" id="lb-period-tabs">
         <button class="icon-btn active" data-period="daily">Daily</button>
         <button class="icon-btn" data-period="weekly">Weekly</button>
@@ -672,14 +907,12 @@
         <button class="icon-btn" data-period="yearly">Yearly</button>
       </div>
 
-      <!-- Geo Location Tabs -->
       <div class="tabs-row" id="lb-scope-tabs">
         <button class="icon-btn active" data-scope="global">🌍 Global</button>
         <button class="icon-btn" data-scope="country">🏳️ Country</button>
         <button class="icon-btn" data-scope="region">📍 Region/City</button>
       </div>
 
-      <!-- Sort Metric Toggle -->
       <div class="tabs-row" id="lb-sort-tabs">
         <button class="icon-btn active" data-sort="time">⏱ Fastest Time</button>
         <button class="icon-btn" data-sort="score">💎 Highest Points</button>
@@ -707,18 +940,29 @@
     </div>
   </div>
 
-  <!-- 100-Play Monetization Gate Modal -->
+  <!-- Immediate Pro Shop & 100-Play Monetization Modal -->
   <div id="monetization-modal" class="overlay-modal hidden">
     <div class="modal-card">
-      <div class="win-title">👑 100 Plays Milestone Unlocked!</div>
+      <div class="win-title">👑 Seolith Pro Pass & Boost Shop</div>
       <div class="win-subtitle">
-        You've played <strong id="monetize-play-count">100</strong> rounds of Seolith Tiles!
-        Support the arcade server or claim a sponsored pass to unlock unlimited Pro Vaults & +25 instant x3 Boosts.
+        Played <strong id="monetize-play-count">1</strong> rounds • Free Plays Remaining Before Gate: <strong id="monetize-free-left">99</strong><br/>
+        Upgrade now or share with friends to unlock instant 1,500-ball cascades!
       </div>
       <div class="stars-row">⚡ 💎 ⚡</div>
+
+      <div class="doc-box" style="margin-bottom:12px;">
+        <ul>
+          <li><strong>👑 Seolith Pro Pass ($2.99 Lifetime)</strong>: Unlimited plays past the 100-play gate, automatic Gold Safety Floor at launch, +25 `⚡ x3 Boosts`, and Verified Pro Badge on Leaderboards.</li>
+          <li><strong>📤 Viral Share Reward (FREE)</strong>: Share your challenge link on X or WhatsApp to get <strong>+3 `⚡ x3 Boosts`</strong> immediately!</li>
+          <li><strong>🎬 Rewarded Sponsor Spot (FREE)</strong>: Watch a 5-second sponsor spot for <strong>+3 `⚡ x3 Boosts` & +5 Free Plays</strong>.</li>
+        </ul>
+      </div>
+
       <div class="modal-btn-row">
-        <button id="btn-unlock-pro" class="primary-btn">✨ Activate Seolith Pro Pass ($2.99 / Instant Demo Unlock)</button>
-        <button id="btn-watch-rewarded" class="icon-btn">🎬 Watch 5s Sponsor Spot (+5 Free Plays)</button>
+        <button id="btn-unlock-pro" class="primary-btn">✨ Unlock Seolith Pro Pass ($2.99 / Instant Demo Activate)</button>
+        <button id="btn-watch-rewarded" class="icon-btn gold-btn">🎬 5s Sponsor Spot (+3 Boosts)</button>
+        <button id="btn-share-for-boosts" class="icon-btn active">𝕏 Share on X (+3 Boosts)</button>
+        <button id="btn-close-monetize" class="icon-btn">Later</button>
       </div>
     </div>
   </div>

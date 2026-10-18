@@ -1,5 +1,6 @@
 // src/recorder.js
-// Recordable Gameplay (Canvas 60fps Video Capture) & Mobile-First Viral Share Card Generator
+// Recordable Gameplay (Canvas 60fps Video Capture) & Viral Social Media Referral Engine
+// Supports 1-click sharing to X (Twitter), WhatsApp, Reddit, Native Mobile Share, and Referral Challenge URLs.
 
 export class SeolithRecorder {
   constructor(canvas) {
@@ -12,7 +13,7 @@ export class SeolithRecorder {
     this.mimeType = 'video/webm';
   }
 
-  startRecording(audioCtx = null) {
+  startRecording() {
     if (this.isRecording || !this.canvas || typeof this.canvas.captureStream !== 'function') {
       return false;
     }
@@ -97,14 +98,47 @@ export class SeolithRecorder {
     return true;
   }
 
-  // Generate a high-contrast shareable scorecard PNG Blob + mobile Web Share payload
+  buildChallengeUrl({ playerName, levelId, clearTimeSec, score }) {
+    const base = window.location.origin;
+    const params = new URLSearchParams({
+      ref: (playerName || 'Player').slice(0, 18),
+      level: String(levelId || 0),
+      target: String(clearTimeSec || '45.0'),
+      pts: String(score || 0),
+    });
+    return `${base}/?${params.toString()}`;
+  }
+
+  buildViralShareText({ playerName, levelName, levelId, score, clearTimeSec, peakBalls, stars, locationLabel }) {
+    const url = this.buildChallengeUrl({ playerName, levelId, clearTimeSec, score });
+    const text = `🧱 SEOLITH TILES — ${levelName}\n${'⭐'.repeat(stars)} Cleared in ${clearTimeSec}s with a ${peakBalls}x Ball Cascade!\n🏆 Score: ${Number(score).toLocaleString()} pts (${locationLabel || 'Global'})\n🔥 Can you beat my clear time? Play instant in browser:`;
+    return { text, url, full: `${text}\n${url}` };
+  }
+
+  shareToX(payload) {
+    const { text, url } = this.buildViralShareText(payload);
+    const intentUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=SeolithTiles,BrickBreaker,RustWasm`;
+    window.open(intentUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  shareToWhatsApp(payload) {
+    const { full } = this.buildViralShareText(payload);
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(full)}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  shareToReddit(payload) {
+    const { text, url } = this.buildViralShareText(payload);
+    const redditUrl = `https://www.reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text.replace(/\n/g, ' | '))}`;
+    window.open(redditUrl, '_blank', 'noopener,noreferrer');
+  }
+
   async generateShareCardBlob({ levelName, score, clearTimeSec, peakBalls, stars, locationLabel }) {
     const c = document.createElement('canvas');
     c.width = 1080;
     c.height = 1350;
     const ctx = c.getContext('2d');
 
-    // Deep obsidian gradient background
     const grad = ctx.createLinearGradient(0, 0, 0, c.height);
     grad.addColorStop(0, '#0f172a');
     grad.addColorStop(0.5, '#090a10');
@@ -112,7 +146,6 @@ export class SeolithRecorder {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, c.width, c.height);
 
-    // Draw snapshot of the live 3D game canvas in the center
     if (this.canvas) {
       ctx.save();
       ctx.strokeStyle = '#f59e0b';
@@ -122,7 +155,6 @@ export class SeolithRecorder {
       ctx.restore();
     }
 
-    // Header
     ctx.fillStyle = '#f8fafc';
     ctx.font = '900 68px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
@@ -132,11 +164,10 @@ export class SeolithRecorder {
     ctx.font = '700 34px system-ui, -apple-system, sans-serif';
     ctx.fillText(`${levelName}  •  ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, 540, 172);
 
-    // Stats Footer
     ctx.fillStyle = '#ffffff';
     ctx.font = '800 54px system-ui, -apple-system, sans-serif';
     ctx.fillText(
-      `SCORE: ${score.toLocaleString()}   |   TIME: ${clearTimeSec}s`,
+      `SCORE: ${Number(score).toLocaleString()}   |   TIME: ${clearTimeSec}s`,
       540,
       1075
     );
@@ -144,21 +175,20 @@ export class SeolithRecorder {
     ctx.fillStyle = '#38bdf8';
     ctx.font = '600 36px system-ui, -apple-system, sans-serif';
     ctx.fillText(
-      `PEAK CASCADE: ${peakBalls.toLocaleString()} BALLS   •   📍 ${locationLabel || 'Global'}`,
+      `PEAK CASCADE: ${Number(peakBalls).toLocaleString()} BALLS   •   📍 ${locationLabel || 'Global'}`,
       540,
       1145
     );
 
     ctx.fillStyle = '#94a3b8';
     ctx.font = '500 30px system-ui, -apple-system, sans-serif';
-    ctx.fillText('Play & break the record at seolith-tiles.seolith.workers.dev', 540, 1255);
+    ctx.fillText('Play & break the record at seolith-tiles.seolith-com.workers.dev', 540, 1255);
 
     return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
   }
 
-  async shareRun({ levelName, score, clearTimeSec, peakBalls, stars, locationLabel }) {
-    const shareUrl = window.location.origin;
-    const shareText = `🧱 SEOLITH TILES — ${levelName}\n${'⭐'.repeat(stars)} Cleared in ${clearTimeSec}s!\n🏆 Score: ${score.toLocaleString()} pts (${peakBalls}x Ball Cascade)\n📍 ${locationLabel || 'Global'}\nCan you beat my time?`;
+  async shareRun(payload) {
+    const { text, url, full } = this.buildViralShareText(payload);
 
     try {
       const files = [];
@@ -173,14 +203,7 @@ export class SeolithRecorder {
       }
 
       if (files.length === 0) {
-        const cardBlob = await this.generateShareCardBlob({
-          levelName,
-          score,
-          clearTimeSec,
-          peakBalls,
-          stars,
-          locationLabel,
-        });
+        const cardBlob = await this.generateShareCardBlob(payload);
         if (cardBlob) {
           const imgFile = new File([cardBlob], 'seolith-tiles-score.png', { type: 'image/png' });
           if (navigator.canShare && navigator.canShare({ files: [imgFile] })) {
@@ -192,17 +215,16 @@ export class SeolithRecorder {
       if (navigator.share) {
         await navigator.share({
           title: 'Seolith Tiles — Satisfying Micro-Brick Breaker',
-          text: shareText,
-          url: shareUrl,
+          text,
+          url,
           ...(files.length > 0 ? { files } : {}),
         });
         return { shared: true, method: 'native' };
       }
     } catch (_) {}
 
-    // Fallback: copy rich text to clipboard
     try {
-      await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+      await navigator.clipboard.writeText(full);
       return { shared: true, method: 'clipboard' };
     } catch (_) {
       return { shared: false, method: 'none' };

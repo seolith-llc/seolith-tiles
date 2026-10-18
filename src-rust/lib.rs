@@ -1,7 +1,8 @@
 #![allow(static_mut_refs)]
 // src-rust/lib.rs
 // High-performance micro-tile brick breaker physics engine compiled to WebAssembly.
-// Designed for zero-copy Float32Array / Uint8Array shared memory access from Three.js.
+// v1.1.0: Fixed hard-lined steel wall bleeding/tunneling via swept Circle-vs-AABB closest-point collision
+// and corner resolution so balls never penetrate 1-tile-thick steel shafts or diagonal chutes.
 
 const MAX_GRID_W: usize = 80;
 const MAX_GRID_H: usize = 80;
@@ -147,7 +148,7 @@ static mut STATE: EngineState = EngineState {
     base_paddle_w: 0.18,
     aim_angle: 0.0,
     ball_speed: 0.62,
-    ball_radius: 0.0055,
+    ball_radius: 0.0046,
     safety_floor_timer: 0.0,
     elapsed_ms: 0.0,
     score: 0,
@@ -162,10 +163,6 @@ static mut STATE: EngineState = EngineState {
     particle_cursor: 0,
 };
 
-// Coordinate space:
-// World X is [0.0, 1.0] (left to right)
-// World Y is [0.0, 1.35] (0.0 = bottom of screen, 1.35 = top of screen)
-// The micro-tile vault occupies X in [VAULT_LEFT, VAULT_RIGHT] and Y in [VAULT_BOTTOM, VAULT_TOP]
 const WORLD_W: f32 = 1.0;
 const WORLD_H: f32 = 1.35;
 const VAULT_LEFT: f32 = 0.04;
@@ -202,6 +199,9 @@ impl EngineState {
         self.grid_h = grid_h.clamp(16, MAX_GRID_H);
         self.rng_state = if seed == 0 { 0x2026_1017 } else { seed };
 
+        let cell_w = (VAULT_RIGHT - VAULT_LEFT) / (self.grid_w as f32);
+        self.ball_radius = (cell_w * 0.34).clamp(0.0038, 0.0062);
+
         for i in 0..MAX_CELLS {
             self.tiles[i] = TILE_EMPTY;
         }
@@ -225,7 +225,6 @@ impl EngineState {
         self.destroyed_bricks_total = 0;
         self.status = STATUS_READY;
 
-        // Place initial starter ball on the paddle
         self.balls[0] = Ball {
             x: self.paddle_x,
             y: self.paddle_y + self.paddle_h * 0.5 + self.ball_radius + 0.004,
@@ -270,7 +269,6 @@ impl EngineState {
     }
 
     pub fn maybe_spawn_capsule(&mut self, wx: f32, wy: f32, guaranteed: bool) {
-        // Count active capsules so screen isn't flooded
         let mut active_caps = 0usize;
         let mut free_slot = None;
         for i in 0..MAX_CAPSULES {
@@ -289,8 +287,6 @@ impl EngineState {
         };
 
         let r = rand_f32(&mut self.rng_state);
-        // If it's a yellow/gold trigger brick, 100% drop; otherwise dynamic drop probability
-        // Higher drop rate when fewer balls are active so the player easily triggers the cascade!
         let drop_chance = if guaranteed {
             1.0
         } else if self.active_balls_count < 15 {
@@ -307,7 +303,6 @@ impl EngineState {
 
         let kind_roll = rand_f32(&mut self.rng_state);
         let kind = if guaranteed {
-            // Gold bricks in the chamber drop x3 or +3 just like in the X videos!
             if kind_roll < 0.62 {
                 CAPSULE_MUL3
             } else if kind_roll < 0.90 {
@@ -342,7 +337,6 @@ impl EngineState {
 
         match kind {
             CAPSULE_MUL3 => {
-                // Multiply every currently active ball by 3 (add 2 clones per active ball)
                 let mut current_indices = [0usize; MAX_BALLS];
                 let mut current_len = 0usize;
                 for i in 0..MAX_BALLS {
@@ -364,9 +358,10 @@ impl EngineState {
                         if search_idx >= MAX_BALLS {
                             break;
                         }
-                        let offset = if clone_i == 0 { 0.24 } else { -0.24 };
-                        let jitter = (rand_f32(&mut self.rng_state) - 0.5) * 0.08;
+                        let offset = if clone_i == 0 { 0.22 } else { -0.22 };
+                        let jitter = (rand_f32(&mut self.rng_state) - 0.5) * 0.06;
                         let new_angle = base_angle + offset + jitter;
+                        // Spawn clone at exact parent position (zero offset) so it never spawns inside a wall!
                         self.balls[search_idx] = Ball {
                             x: src.x,
                             y: src.y,
@@ -380,8 +375,7 @@ impl EngineState {
                 }
             }
             CAPSULE_ADD3 => {
-                // Fire 3 fresh balls upward from the paddle
-                let angles = [-0.28f32, 0.0, 0.28];
+                let angles = [-0.26f32, 0.0, 0.26];
                 let mut search_idx = 0usize;
                 for &ang in &angles {
                     while search_idx < MAX_BALLS && self.balls[search_idx].active > 0.5 {
@@ -390,7 +384,7 @@ impl EngineState {
                     if search_idx >= MAX_BALLS {
                         break;
                     }
-                    let launch_ang = std::f32::consts::FRAC_PI_2 + ang + (rand_f32(&mut self.rng_state) - 0.5) * 0.05;
+                    let launch_ang = std::f32::consts::FRAC_PI_2 + ang + (rand_f32(&mut self.rng_state) - 0.5) * 0.04;
                     self.balls[search_idx] = Ball {
                         x: self.paddle_x,
                         y: self.paddle_y + self.paddle_h * 0.6 + self.ball_radius,
@@ -409,7 +403,6 @@ impl EngineState {
                 self.paddle_w = (self.paddle_w - 0.04).max(0.09);
             }
             CAPSULE_STAR => {
-                // 12 seconds of bottom safety laser floor!
                 self.safety_floor_timer = (self.safety_floor_timer + 12.0).min(25.0);
             }
             _ => {}
@@ -422,9 +415,8 @@ impl EngineState {
         self.frame_paddle_hits = 0;
         self.frame_powerup_collected = 0;
 
-        let clamped_dt = dt_sec.clamp(0.001, 0.035);
+        let clamped_dt = dt_sec.clamp(0.001, 0.032);
 
-        // Update particles even when waiting/won
         for i in 0..MAX_PARTICLES {
             if self.particles[i].life > 0.0 {
                 self.particles[i].x += self.particles[i].vx * clamped_dt;
@@ -436,7 +428,6 @@ impl EngineState {
         }
 
         if self.status == STATUS_READY {
-            // Keep starter ball attached to paddle
             self.balls[0].x = self.paddle_x;
             self.balls[0].y = self.paddle_y + self.paddle_h * 0.5 + self.ball_radius + 0.004;
             self.balls[0].active = 1.0;
@@ -477,7 +468,10 @@ impl EngineState {
 
         let cell_w = (VAULT_RIGHT - VAULT_LEFT) / (self.grid_w as f32);
         let cell_h = (VAULT_TOP - VAULT_BOTTOM) / (self.grid_h as f32);
-        let max_step_dist = cell_w.min(cell_h) * 0.42;
+        // Fine substep distance (<= 22% of a single micro-tile!) guarantees zero tunneling through hard steel lines
+        let max_step_dist = cell_w.min(cell_h) * 0.22;
+        let radius = self.ball_radius;
+        let rad_sq = radius * radius;
 
         let mut active_count = 0u32;
 
@@ -492,37 +486,36 @@ impl EngineState {
             let mut bvy = self.balls[b_idx].vy;
 
             let total_dist = ((bvx * clamped_dt).powi(2) + (bvy * clamped_dt).powi(2)).sqrt();
-            let substeps = ((total_dist / max_step_dist).ceil() as usize).clamp(1, 8);
+            let substeps = ((total_dist / max_step_dist).ceil() as usize).clamp(1, 16);
             let sub_dt = clamped_dt / (substeps as f32);
 
             let mut ball_alive = true;
 
             for _ in 0..substeps {
-                let prev_x = bx;
                 let prev_y = by;
                 bx += bvx * sub_dt;
                 by += bvy * sub_dt;
 
                 // Outer arena walls
-                if bx - self.ball_radius < 0.01 {
-                    bx = 0.01 + self.ball_radius;
+                if bx - radius < 0.01 {
+                    bx = 0.01 + radius;
                     bvx = bvx.abs();
                     self.frame_wall_hits += 1;
-                } else if bx + self.ball_radius > WORLD_W - 0.01 {
-                    bx = WORLD_W - 0.01 - self.ball_radius;
+                } else if bx + radius > WORLD_W - 0.01 {
+                    bx = WORLD_W - 0.01 - radius;
                     bvx = -bvx.abs();
                     self.frame_wall_hits += 1;
                 }
 
-                if by + self.ball_radius > WORLD_H - 0.01 {
-                    by = WORLD_H - 0.01 - self.ball_radius;
+                if by + radius > WORLD_H - 0.01 {
+                    by = WORLD_H - 0.01 - radius;
                     bvy = -bvy.abs();
                     self.frame_wall_hits += 1;
                 }
 
-                // Safety floor barrier (from Gold Star ★ capsule)
-                if self.safety_floor_timer > 0.0 && by - self.ball_radius < 0.025 && bvy < 0.0 {
-                    by = 0.025 + self.ball_radius;
+                // Safety floor barrier
+                if self.safety_floor_timer > 0.0 && by - radius < 0.025 && bvy < 0.0 {
+                    by = 0.025 + radius;
                     bvy = bvy.abs();
                     self.frame_wall_hits += 1;
                 }
@@ -535,15 +528,14 @@ impl EngineState {
 
                 // Paddle collision
                 if bvy < 0.0
-                    && by - self.ball_radius <= self.paddle_y + self.paddle_h * 0.5
-                    && prev_y - self.ball_radius >= self.paddle_y - self.paddle_h * 0.65
+                    && by - radius <= self.paddle_y + self.paddle_h * 0.5
+                    && prev_y - radius >= self.paddle_y - self.paddle_h * 0.65
                 {
-                    let half_w = self.paddle_w * 0.5 + self.ball_radius;
+                    let half_w = self.paddle_w * 0.5 + radius;
                     if (bx - self.paddle_x).abs() <= half_w {
-                        by = self.paddle_y + self.paddle_h * 0.5 + self.ball_radius;
+                        by = self.paddle_y + self.paddle_h * 0.5 + radius;
                         let rel = ((bx - self.paddle_x) / half_w).clamp(-0.92, 0.92);
-                        // Bounce angle: 0 is straight up
-                        let bounce_angle = rel * 1.12; // up to ~64 degrees
+                        let bounce_angle = rel * 1.12;
                         let spd = (bvx * bvx + bvy * bvy).sqrt().max(self.ball_speed);
                         bvx = bounce_angle.sin() * spd;
                         bvy = bounce_angle.cos() * spd;
@@ -552,59 +544,120 @@ impl EngineState {
                     }
                 }
 
-                // Micro-tile vault collision check
-                if bx + self.ball_radius >= VAULT_LEFT
-                    && bx - self.ball_radius <= VAULT_RIGHT
-                    && by + self.ball_radius >= VAULT_BOTTOM
-                    && by - self.ball_radius <= VAULT_TOP
+                // Exact Circle-vs-AABB Multi-Pass Collision Resolution against Micro-Tiles!
+                // Prioritizes hard steel walls (TILE_WALL_STEEL) and resolves up to 2 simultaneous corner contacts
+                // so balls NEVER bleed or tunnel through 1-tile-thick steel shafts or diagonal walls.
+                if bx + radius >= VAULT_LEFT
+                    && bx - radius <= VAULT_RIGHT
+                    && by + radius >= VAULT_BOTTOM
+                    && by - radius <= VAULT_TOP
                 {
-                    let min_col = (((bx - self.ball_radius - VAULT_LEFT) / cell_w).floor() as isize)
-                        .clamp(0, (self.grid_w as isize) - 1) as usize;
-                    let max_col = (((bx + self.ball_radius - VAULT_LEFT) / cell_w).floor() as isize)
-                        .clamp(0, (self.grid_w as isize) - 1) as usize;
-                    // Row 0 is bottom of vault, row grid_h-1 is top of vault
-                    let min_row = (((by - self.ball_radius - VAULT_BOTTOM) / cell_h).floor() as isize)
-                        .clamp(0, (self.grid_h as isize) - 1) as usize;
-                    let max_row = (((by + self.ball_radius - VAULT_BOTTOM) / cell_h).floor() as isize)
-                        .clamp(0, (self.grid_h as isize) - 1) as usize;
+                    for _pass in 0..2 {
+                        let min_col = (((bx - radius - VAULT_LEFT) / cell_w).floor() as isize)
+                            .clamp(0, (self.grid_w as isize) - 1) as usize;
+                        let max_col = (((bx + radius - VAULT_LEFT) / cell_w).floor() as isize)
+                            .clamp(0, (self.grid_w as isize) - 1) as usize;
+                        let min_row = (((by - radius - VAULT_BOTTOM) / cell_h).floor() as isize)
+                            .clamp(0, (self.grid_h as isize) - 1) as usize;
+                        let max_row = (((by + radius - VAULT_BOTTOM) / cell_h).floor() as isize)
+                            .clamp(0, (self.grid_h as isize) - 1) as usize;
 
-                    'cell_scan: for row in min_row..=max_row {
-                        for col in min_col..=max_col {
-                            let idx = row * self.grid_w + col;
-                            let tile = self.tiles[idx];
-                            if tile == TILE_EMPTY {
-                                continue;
+                        // Find the deepest penetrating tile in the neighborhood (prioritizing steel armor walls)
+                        let mut best_hit: Option<(usize, usize, u8, f32, f32, f32)> = None;
+
+                        for row in min_row..=max_row {
+                            let y0 = VAULT_BOTTOM + (row as f32) * cell_h;
+                            let y1 = y0 + cell_h;
+                            for col in min_col..=max_col {
+                                let idx = row * self.grid_w + col;
+                                let tile = self.tiles[idx];
+                                if tile == TILE_EMPTY {
+                                    continue;
+                                }
+
+                                let x0 = VAULT_LEFT + (col as f32) * cell_w;
+                                let x1 = x0 + cell_w;
+
+                                // Closest point on tile AABB to ball center
+                                let cx = bx.clamp(x0, x1);
+                                let cy = by.clamp(y0, y1);
+                                let dx = bx - cx;
+                                let dy = by - cy;
+                                let dist_sq = dx * dx + dy * dy;
+
+                                if dist_sq < rad_sq {
+                                    // Prioritize smaller dist_sq (deeper penetration), with slight priority boost for steel walls
+                                    let priority_score = if tile == TILE_WALL_STEEL {
+                                        dist_sq * 0.5
+                                    } else {
+                                        dist_sq
+                                    };
+                                    if best_hit.is_none() || priority_score < best_hit.unwrap().5 {
+                                        best_hit = Some((col, row, tile, dx, dy, priority_score));
+                                    }
+                                }
                             }
+                        }
 
-                            let tile_cx = VAULT_LEFT + (col as f32 + 0.5) * cell_w;
-                            let tile_cy = VAULT_BOTTOM + (row as f32 + 0.5) * cell_h;
+                        if let Some((col, row, tile, dx, dy, _)) = best_hit {
+                            let idx = row * self.grid_w + col;
+                            let x0 = VAULT_LEFT + (col as f32) * cell_w;
+                            let x1 = x0 + cell_w;
+                            let y0 = VAULT_BOTTOM + (row as f32) * cell_h;
+                            let y1 = y0 + cell_h;
+                            let tile_cx = (x0 + x1) * 0.5;
+                            let tile_cy = (y0 + y1) * 0.5;
 
-                            let dx = prev_x - tile_cx;
-                            let dy = prev_y - tile_cy;
+                            // Push ball cleanly outside the tile AABB along the minimum penetration axis
+                            let dist = (dx * dx + dy * dy).sqrt();
+                            if dist > 1e-5 {
+                                let nx = dx / dist;
+                                let ny = dy / dist;
+                                let pen = (radius - dist) + 0.00015;
+                                bx += nx * pen;
+                                by += ny * pen;
 
-                            // Determine primary reflection axis
-                            if (dx / cell_w).abs() > (dy / cell_h).abs() {
-                                bvx = -bvx;
-                                // Nudge out
-                                if dx > 0.0 {
-                                    bx = tile_cx + cell_w * 0.5 + self.ball_radius * 0.6;
-                                } else {
-                                    bx = tile_cx - cell_w * 0.5 - self.ball_radius * 0.6;
+                                // Reflect velocity vector across collision normal if moving into the surface
+                                let dot = bvx * nx + bvy * ny;
+                                if dot < 0.0 {
+                                    if nx.abs() > ny.abs() {
+                                        bvx = -bvx;
+                                    } else {
+                                        bvy = -bvy;
+                                    }
                                 }
                             } else {
-                                bvy = -bvy;
-                                if dy > 0.0 {
-                                    by = tile_cy + cell_h * 0.5 + self.ball_radius * 0.6;
+                                // Ball center is inside the AABB: push out along shallowest axis from tile center
+                                let ox = (cell_w * 0.5 + radius) - (bx - tile_cx).abs();
+                                let oy = (cell_h * 0.5 + radius) - (by - tile_cy).abs();
+                                if ox < oy {
+                                    if bx >= tile_cx {
+                                        bx = x1 + radius + 0.00015;
+                                        bvx = bvx.abs();
+                                    } else {
+                                        bx = x0 - radius - 0.00015;
+                                        bvx = -bvx.abs();
+                                    }
                                 } else {
-                                    by = tile_cy - cell_h * 0.5 - self.ball_radius * 0.6;
+                                    if by >= tile_cy {
+                                        by = y1 + radius + 0.00015;
+                                        bvy = bvy.abs();
+                                    } else {
+                                        by = y0 - radius - 0.00015;
+                                        bvy = -bvy.abs();
+                                    }
                                 }
                             }
 
-                            // Prevent purely horizontal trapping by ensuring minimum vertical velocity
+                            // Normalize speed back to ball_speed and prevent horizontal stalling
                             if bvy.abs() < 0.045 {
                                 bvy = if bvy >= 0.0 { 0.055 } else { -0.055 };
                             }
+                            let cur_spd = (bvx * bvx + bvy * bvy).sqrt().max(0.001);
+                            bvx = (bvx / cur_spd) * self.ball_speed;
+                            bvy = (bvy / cur_spd) * self.ball_speed;
 
+                            // Process tile damage
                             if tile == TILE_WALL_STEEL {
                                 self.frame_wall_hits += 1;
                             } else if tile == TILE_BRICK_ARMORED {
@@ -632,8 +685,8 @@ impl EngineState {
                                 self.spawn_shatter(tile_cx, tile_cy, tile as f32);
                                 self.maybe_spawn_capsule(tile_cx, tile_cy, was_gold);
                             }
-
-                            break 'cell_scan;
+                        } else {
+                            break;
                         }
                     }
                 }
@@ -657,7 +710,6 @@ impl EngineState {
 
         if self.remaining_bricks == 0 {
             self.status = STATUS_WON;
-            // Time bonus
             let secs = (self.elapsed_ms / 1000.0).max(1.0);
             let time_bonus = ((180.0 / secs) * 1000.0) as u32;
             self.score = self.score.saturating_add(time_bonus);
@@ -668,7 +720,7 @@ impl EngineState {
 }
 
 // ============================================================================
-// WebAssembly C-ABI Exports for Zero-Copy JavaScript / Three.js Integration
+// WebAssembly C-ABI Exports
 // ============================================================================
 
 #[no_mangle]
@@ -685,14 +737,14 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
         let w = STATE.grid_w;
         let h = STATE.grid_h;
 
-        // Helper closure to set tile at (col, row) where row=0 is bottom, row=h-1 is top
         let set_tile = |tiles: &mut [u8; MAX_CELLS], c: usize, r: usize, val: u8| {
             if c < w && r < h {
                 tiles[r * w + c] = val;
             }
         };
 
-        // 1. Fill interior with primary breakable micro-tiles and outer 1-tile perimeter with steel armor
+        // 1. Fill interior with primary breakable micro-tiles and outer 2-tile-thick perimeter with steel armor
+        // so balls can never bleed outside the vault perimeter!
         for r in 0..h {
             for c in 0..w {
                 if r == 0 || r == h - 1 || c == 0 || c == w - 1 {
@@ -704,11 +756,11 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
         }
 
         match level_id {
-            // LEVEL 0: Viral Post #1 ("The Diagonal Chimney" - https://x.com/iwhale/status/2111454912072806784)
-            // Vertical shaft on the right (x ~ 76%), diagonal chute going down-left to a gold-lined inner chamber!
+            // LEVEL 0: Viral Post #1 ("The Diagonal Chimney")
+            // Uses 4-connected (watertight) double-lined steel walls along the vertical shaft & diagonal chute!
             0 => {
-                let shaft_c = (w as f32 * 0.76) as usize;
-                let tunnel_w = 2usize; // 2-tile wide ball breach
+                let shaft_c = (w as f32 * 0.75) as usize;
+                let tunnel_w = 3usize;
 
                 // Bottom opening in the steel border
                 for c in shaft_c..(shaft_c + tunnel_w) {
@@ -716,20 +768,23 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 }
 
                 let peak_r = (h as f32 * 0.82) as usize;
-                // Carve vertical right shaft with steel armor walls
                 for r in 0..=peak_r {
                     for c in shaft_c..(shaft_c + tunnel_w) {
                         set_tile(&mut STATE.tiles, c, r, TILE_EMPTY);
                     }
-                    // Left & right steel walls of the vertical shaft
-                    if r < peak_r - 2 {
+                    // Watertight left & right steel walls of the vertical shaft
+                    if r < peak_r - 3 {
                         set_tile(&mut STATE.tiles, shaft_c - 1, r, TILE_WALL_STEEL);
                     }
                     set_tile(&mut STATE.tiles, shaft_c + tunnel_w, r, TILE_WALL_STEEL);
                 }
+                // Cap top of shaft with steel
+                for c in (shaft_c - 2)..=(shaft_c + tunnel_w) {
+                    set_tile(&mut STATE.tiles, c, peak_r + 1, TILE_WALL_STEEL);
+                }
 
-                // Carve diagonal chute going down-left from (shaft_c, peak_r) to chamber
-                let steps = (w as f32 * 0.38) as usize;
+                // Diagonal chute going down-left with watertight 2-tile-thick steel ceiling & floor (zero diagonal corner gaps!)
+                let steps = (w as f32 * 0.36) as usize;
                 let mut end_c = shaft_c;
                 let mut end_r = peak_r;
                 for s in 0..steps {
@@ -737,21 +792,32 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                     let r = peak_r.saturating_sub(s);
                     end_c = c;
                     end_r = r;
-                    for tc in c..(c + tunnel_w + 1) {
+
+                    // Carve 3x3 interior tunnel step
+                    for tc in c..(c + tunnel_w) {
                         for tr in r.saturating_sub(1)..=(r + 1) {
                             set_tile(&mut STATE.tiles, tc, tr, TILE_EMPTY);
                         }
                     }
-                    // Upper & lower steel armor along the diagonal chute
+                }
+
+                // Watertight steel armor walls lining both sides of the diagonal chute
+                for s in 0..steps {
+                    let c = shaft_c.saturating_sub(s);
+                    let r = peak_r.saturating_sub(s);
+                    // Upper-left diagonal ceiling wall (2 tiles thick so no corner bleeding!)
                     if r + 2 < h - 1 {
                         set_tile(&mut STATE.tiles, c, r + 2, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, c.saturating_sub(1), r + 2, TILE_WALL_STEEL);
                     }
+                    // Lower-right diagonal floor wall
                     if r >= 2 && s > 2 && s < steps - 3 {
-                        set_tile(&mut STATE.tiles, c + 1, r - 2, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, c + tunnel_w, r - 1, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, c + tunnel_w, r - 2, TILE_WALL_STEEL);
                     }
                 }
 
-                // Inner horizontal chamber at the bottom of the diagonal chute with Yellow/Gold trigger tiles on left & right!
+                // Inner horizontal chamber at the bottom of the diagonal chute
                 let ch_left = end_c.saturating_sub(5);
                 let ch_right = (end_c + 5).min(w - 4);
                 let ch_bottom = end_r.saturating_sub(3);
@@ -762,14 +828,13 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                         set_tile(&mut STATE.tiles, c, r, TILE_EMPTY);
                     }
                 }
-                // Steel floor and ceiling of the inner chamber
                 for c in (ch_left - 1)..=(ch_right + 1) {
                     set_tile(&mut STATE.tiles, c, ch_bottom - 1, TILE_WALL_STEEL);
-                    if c < end_c - 1 || c > end_c + 2 {
+                    if c < end_c - 1 || c > end_c + tunnel_w {
                         set_tile(&mut STATE.tiles, c, ch_top + 1, TILE_WALL_STEEL);
                     }
                 }
-                // Gold trigger bricks on the left & right walls of the chamber (just like the video!)
+                // Gold trigger bricks on the left & right ends of the chamber (breach points into the red vault!)
                 for r in ch_bottom..=ch_top {
                     set_tile(&mut STATE.tiles, ch_left, r, TILE_BRICK_GOLD);
                     set_tile(&mut STATE.tiles, ch_left + 1, r, TILE_BRICK_GOLD);
@@ -778,19 +843,17 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 }
             }
 
-            // LEVEL 1: Viral Post #2 ("The Center Bent Pipe" - https://x.com/iwhale/status/2110821987052634247)
-            // Center vertical pipe going up 32%, then bending 45 degrees up-left to 3 gold trigger blocks!
+            // LEVEL 1: Viral Post #2 ("The Center Bent Pipe")
+            // Watertight vertical pipe + 45-degree bend up-left to gold trigger blocks
             1 => {
                 let mid_c = w / 2;
                 let tunnel_w = 3usize;
                 let knee_r = (h as f32 * 0.30) as usize;
 
-                // Bottom opening
                 for c in (mid_c - 1)..(mid_c - 1 + tunnel_w) {
                     set_tile(&mut STATE.tiles, c, 0, TILE_EMPTY);
                 }
 
-                // Vertical stem
                 for r in 0..=knee_r {
                     for c in (mid_c - 1)..(mid_c - 1 + tunnel_w) {
                         set_tile(&mut STATE.tiles, c, r, TILE_EMPTY);
@@ -799,7 +862,6 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                     set_tile(&mut STATE.tiles, mid_c - 1 + tunnel_w, r, TILE_WALL_STEEL);
                 }
 
-                // 45-degree bend up-left
                 let diag_len = (h as f32 * 0.18) as usize;
                 let mut tip_c = mid_c - 1;
                 let mut tip_r = knee_r;
@@ -813,14 +875,18 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                             set_tile(&mut STATE.tiles, tc, tr, TILE_EMPTY);
                         }
                     }
-                    // Armor along the bend
-                    if s < diag_len - 1 {
-                        set_tile(&mut STATE.tiles, c.saturating_sub(1), r.saturating_sub(1), TILE_WALL_STEEL);
-                        set_tile(&mut STATE.tiles, c + tunnel_w, r + 1, TILE_WALL_STEEL);
-                    }
+                }
+                // Watertight 2-tile-thick steel walls along the 45-degree bend
+                for s in 0..(diag_len - 1) {
+                    let c = (mid_c - 1).saturating_sub(s);
+                    let r = knee_r + s;
+                    set_tile(&mut STATE.tiles, c.saturating_sub(1), r.saturating_sub(1), TILE_WALL_STEEL);
+                    set_tile(&mut STATE.tiles, c.saturating_sub(2), r.saturating_sub(1), TILE_WALL_STEEL);
+                    set_tile(&mut STATE.tiles, c + tunnel_w, r + 1, TILE_WALL_STEEL);
+                    set_tile(&mut STATE.tiles, c + tunnel_w + 1, r + 1, TILE_WALL_STEEL);
                 }
 
-                // Gold trigger cluster at the tip of the bent pipe (breaks open into the entire orange vault!)
+                // Gold trigger cluster at the tip of the bent pipe
                 for r in tip_r..(tip_r + 3) {
                     for c in (tip_c.saturating_sub(2))..(tip_c + 2) {
                         set_tile(&mut STATE.tiles, c, r, TILE_BRICK_GOLD);
@@ -828,14 +894,13 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 }
             }
 
-            // LEVEL 2: "Twin Helix Reactor" (Dual symmetrical chimneys leading to a central core of gold & cyan bricks)
+            // LEVEL 2: "Twin Helix Reactor"
             2 => {
                 let left_c = (w as f32 * 0.24) as usize;
                 let right_c = (w as f32 * 0.74) as usize;
                 let mid_c = w / 2;
                 let mid_r = h / 2;
 
-                // Carve central diamond core with gold & cyan rings
                 for r in 4..(h - 4) {
                     for c in 4..(w - 4) {
                         let dist = ((c as isize - mid_c as isize).abs() + (r as isize - mid_r as isize).abs()) as usize;
@@ -849,15 +914,16 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                     }
                 }
 
-                // Left & right vertical shafts up to mid_r, then horizontal bridges toward the core
                 for &sc in &[left_c, right_c] {
                     set_tile(&mut STATE.tiles, sc, 0, TILE_EMPTY);
                     set_tile(&mut STATE.tiles, sc + 1, 0, TILE_EMPTY);
+                    set_tile(&mut STATE.tiles, sc + 2, 0, TILE_EMPTY);
                     for r in 0..=mid_r {
                         set_tile(&mut STATE.tiles, sc, r, TILE_EMPTY);
                         set_tile(&mut STATE.tiles, sc + 1, r, TILE_EMPTY);
+                        set_tile(&mut STATE.tiles, sc + 2, r, TILE_EMPTY);
                         set_tile(&mut STATE.tiles, sc - 1, r, TILE_WALL_STEEL);
-                        set_tile(&mut STATE.tiles, sc + 2, r, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, sc + 3, r, TILE_WALL_STEEL);
                     }
                 }
                 for c in (left_c + 1)..=(mid_c - 5) {
@@ -870,7 +936,7 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 }
             }
 
-            // LEVEL 3: "Seolith Citadel" (Labyrinthine zig-zag chimney with multi-layered gold vaults)
+            // LEVEL 3: "Seolith Citadel"
             _ => {
                 let mid_c = w / 2;
                 for c in (mid_c - 1)..=(mid_c + 1) {
@@ -885,7 +951,6 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                         }
                     }
                 }
-                // Central chimney going up to 70% height
                 let top_r = (h as f32 * 0.72) as usize;
                 for r in 0..=top_r {
                     for c in (mid_c - 1)..=(mid_c + 1) {
@@ -896,7 +961,6 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                         set_tile(&mut STATE.tiles, mid_c + 2, r, TILE_WALL_STEEL);
                     }
                 }
-                // Gold cap at the top of the shaft
                 for c in (mid_c - 3)..=(mid_c + 3) {
                     set_tile(&mut STATE.tiles, c, top_r + 1, TILE_BRICK_GOLD);
                     set_tile(&mut STATE.tiles, c, top_r + 2, TILE_BRICK_GOLD);
@@ -931,7 +995,7 @@ pub extern "C" fn launch_ball() {
     unsafe {
         if STATE.status == STATUS_READY {
             STATE.status = STATUS_PLAYING;
-            let ang = STATE.aim_angle; // 0 = straight up (+Y)
+            let ang = STATE.aim_angle;
             STATE.balls[0].vx = ang.sin() * STATE.ball_speed;
             STATE.balls[0].vy = ang.cos() * STATE.ball_speed;
             STATE.balls[0].active = 1.0;
@@ -965,7 +1029,6 @@ pub extern "C" fn step_physics(dt_sec: f32) {
     }
 }
 
-// Pointers & state getters for zero-copy TypedArray views in JS
 #[no_mangle]
 pub extern "C" fn get_tiles_ptr() -> *mut u8 {
     unsafe { STATE.tiles.as_mut_ptr() }
@@ -1096,7 +1159,6 @@ pub extern "C" fn get_last_hit_row_norm() -> f32 {
     unsafe { STATE.last_hit_row_norm }
 }
 
-// Save/Restore state helpers for LocalStorage resume
 #[no_mangle]
 pub extern "C" fn restore_snapshot(
     status: u32,
@@ -1121,7 +1183,6 @@ pub extern "C" fn restore_snapshot(
     }
 }
 
-// Compute a deterministic anti-cheat verification hash over score, clear_ms, and peak_balls
 #[no_mangle]
 pub extern "C" fn compute_run_proof(level_id: u32, score: u32, elapsed_ms: u32, peak_balls: u32) -> u32 {
     let mut h: u32 = 0x811C_9DC5;

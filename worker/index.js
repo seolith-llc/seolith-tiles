@@ -1,5 +1,8 @@
 // worker/index.js
 // Cloudflare Worker serving static assets + Edge Geo-Location & Time-Windowed Leaderboards (D1)
+// + Tester Feedback & Bug Reporting API (/api/feedback) + Version Metadata (/api/version)
+
+const APP_VERSION = '1.1.0';
 
 function computeExpectedProof(levelId, score, elapsedMs, peakBalls) {
   let h = 0x811c9dc5 >>> 0;
@@ -24,7 +27,6 @@ function getTimeKeys(date = new Date()) {
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
 
-  // ISO week calculation
   const tmp = new Date(Date.UTC(yyyy, date.getUTCMonth(), date.getUTCDate()));
   const dayNum = tmp.getUTCDay() || 7;
   tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
@@ -45,6 +47,32 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
 };
 
+let schemaInitialized = false;
+async function ensureSchema(db) {
+  if (!db || schemaInitialized) return;
+  try {
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS tester_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tester_name TEXT NOT NULL DEFAULT 'Anonymous',
+          category TEXT NOT NULL DEFAULT 'bug',
+          severity TEXT NOT NULL DEFAULT 'normal',
+          version TEXT NOT NULL DEFAULT '1.1.0',
+          level_id INTEGER NOT NULL DEFAULT 0,
+          message TEXT NOT NULL,
+          device_info TEXT NOT NULL DEFAULT '',
+          country TEXT NOT NULL DEFAULT 'GL',
+          region TEXT NOT NULL DEFAULT 'Global',
+          status TEXT NOT NULL DEFAULT 'open',
+          created_at TEXT NOT NULL
+        )`
+      )
+      .run();
+    schemaInitialized = true;
+  } catch (_) {}
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -56,10 +84,124 @@ export default {
       continent: cf.continent || 'NA',
     };
 
+    // 1. Version Info Endpoint
+    if (url.pathname === '/api/version') {
+      return Response.json(
+        {
+          version: APP_VERSION,
+          updatedAt: '2026-10-17T22:45:00-04:00',
+          geo,
+        },
+        { headers: SECURITY_HEADERS }
+      );
+    }
+
+    // 2. Tester Feedback & Bug Reporting Endpoint (Readable by AI Agent & Testers)
+    if (url.pathname === '/api/feedback') {
+      await ensureSchema(env.DB);
+      if (request.method === 'GET') {
+        const statusFilter = url.searchParams.get('status') || 'all';
+        const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 50)));
+
+        if (env.DB) {
+          try {
+            let query = `SELECT id, tester_name AS testerName, category, severity, version, level_id AS levelId, message, device_info AS deviceInfo, country, region, status, created_at AS createdAt FROM tester_feedback`;
+            const params = [];
+            if (statusFilter !== 'all') {
+              query += ` WHERE status = ?1`;
+              params.push(statusFilter);
+            }
+            query += ` ORDER BY id DESC LIMIT ${limit}`;
+
+            const stmt = params.length
+              ? env.DB.prepare(query).bind(...params)
+              : env.DB.prepare(query);
+            const { results } = await stmt.all();
+            return Response.json(
+              { ok: true, version: APP_VERSION, count: (results || []).length, items: results || [] },
+              { headers: SECURITY_HEADERS }
+            );
+          } catch (err) {
+            return Response.json(
+              { ok: false, error: err.message, items: [] },
+              { headers: SECURITY_HEADERS }
+            );
+          }
+        }
+        return Response.json({ ok: true, items: [] }, { headers: SECURITY_HEADERS });
+      }
+
+      if (request.method === 'POST') {
+        try {
+          const body = await request.json();
+          const testerName =
+            String(body.testerName || 'Tester')
+              .replace(/[^\w\-\s.@]/g, '')
+              .trim()
+              .slice(0, 32) || 'Tester';
+          const category = ['bug', 'improvement', 'physics', 'design', 'monetization'].includes(
+            body.category
+          )
+            ? body.category
+            : 'improvement';
+          const severity = ['low', 'normal', 'high', 'critical'].includes(body.severity)
+            ? body.severity
+            : 'normal';
+          const version = String(body.version || APP_VERSION).slice(0, 16);
+          const levelId = Math.max(0, Math.min(20, Number(body.levelId) || 0));
+          const message = String(body.message || '')
+            .trim()
+            .slice(0, 1200);
+          const deviceInfo = String(body.deviceInfo || '')
+            .trim()
+            .slice(0, 240);
+
+          if (!message || message.length < 3) {
+            return Response.json(
+              { ok: false, error: 'Please enter a feedback message (at least 3 characters).' },
+              { status: 400, headers: SECURITY_HEADERS }
+            );
+          }
+
+          if (env.DB) {
+            await env.DB.prepare(
+              `INSERT INTO tester_feedback (
+                tester_name, category, severity, version, level_id, message, device_info, country, region, status, created_at
+              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10)`
+            )
+              .bind(
+                testerName,
+                category,
+                severity,
+                version,
+                levelId,
+                message,
+                deviceInfo,
+                geo.country,
+                geo.region,
+                new Date().toISOString()
+              )
+              .run();
+          }
+
+          return Response.json(
+            { ok: true, message: 'Feedback logged to Cloudflare D1 for agent triage!' },
+            { headers: SECURITY_HEADERS }
+          );
+        } catch (err) {
+          return Response.json(
+            { ok: false, error: 'Invalid feedback payload' },
+            { status: 400, headers: SECURITY_HEADERS }
+          );
+        }
+      }
+    }
+
+    // 3. Leaderboards Endpoint (Daily, Weekly, Monthly, Yearly + Geo Scope)
     if (url.pathname === '/api/leaderboard') {
       if (request.method === 'GET') {
-        const period = url.searchParams.get('period') || 'daily'; // daily | weekly | monthly | yearly
-        const scope = url.searchParams.get('scope') || 'global';  // global | country | region
+        const period = url.searchParams.get('period') || 'daily';
+        const scope = url.searchParams.get('scope') || 'global';
         const levelId = Number(url.searchParams.get('levelId') || 0);
         const sortBy = url.searchParams.get('sortBy') === 'score' ? 'score' : 'time';
 
@@ -126,17 +268,20 @@ export default {
       if (request.method === 'POST') {
         try {
           const body = await request.json();
-          const playerName = String(body.playerName || 'Player')
-            .replace(/[^\w\-\s.]/g, '')
-            .trim()
-            .slice(0, 20) || 'Player';
+          const playerName =
+            String(body.playerName || 'Player')
+              .replace(/[^\w\-\s.]/g, '')
+              .trim()
+              .slice(0, 20) || 'Player';
           const levelId = Math.max(0, Math.min(10, Number(body.levelId) || 0));
           const score = Math.max(0, Math.min(2_000_000, Math.round(Number(body.score) || 0)));
-          const elapsedMs = Math.max(3000, Math.min(3_600_000, Math.round(Number(body.elapsedMs) || 60000)));
+          const elapsedMs = Math.max(
+            3000,
+            Math.min(3_600_000, Math.round(Number(body.elapsedMs) || 60000))
+          );
           const peakBalls = Math.max(1, Math.min(1600, Math.round(Number(body.peakBalls) || 1)));
           const proof = (Number(body.proof) || 0) >>> 0;
 
-          // Verify deterministic WASM run proof to prevent spoofed scores
           const expected = computeExpectedProof(levelId, score, elapsedMs, peakBalls);
           if (proof !== expected) {
             return Response.json(
@@ -182,12 +327,11 @@ export default {
       }
     }
 
-    // Serve static frontend assets (Vite dist/)
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
 
-    return new Response('Seolith Tiles Edge Worker Active', {
+    return new Response(`Seolith Tiles Edge Worker v${APP_VERSION} Active`, {
       headers: SECURITY_HEADERS,
     });
   },

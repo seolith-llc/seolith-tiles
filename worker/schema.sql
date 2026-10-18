@@ -1,5 +1,5 @@
 -- worker/schema.sql
--- Cloudflare D1 Schema for Seolith Tiles Time & Geo-Location Leaderboards
+-- Cloudflare D1 Schema for Seolith Tiles Time & Geo-Location Leaderboards + Tester Feedback Collector
 
 CREATE TABLE IF NOT EXISTS leaderboard_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,12 +26,20 @@ CREATE INDEX IF NOT EXISTS idx_lb_yearly_time ON leaderboard_runs(level_id, year
 CREATE INDEX IF NOT EXISTS idx_lb_country ON leaderboard_runs(level_id, country, elapsed_ms ASC);
 CREATE INDEX IF NOT EXISTS idx_lb_region ON leaderboard_runs(level_id, country, region, elapsed_ms ASC);
 
--- Seed initial benchmark toppers inspired by the viral X posts
-INSERT INTO leaderboard_runs (
-  player_name, level_id, score, elapsed_ms, peak_balls, proof,
-  country, region, city, day_key, week_key, month_key, year_key, created_at
-) VALUES
-  ('iwhale_vault', 0, 68420, 42800, 980, 1001, 'TH', 'Bangkok', 'Bangkok', strftime('%Y-%m-%d','now'), strftime('%Y-W%W','now'), strftime('%Y-%m','now'), strftime('%Y','now'), datetime('now')),
-  ('Hiroku1122', 0, 64150, 48200, 810, 1002, 'JP', 'Tokyo', 'Tokyo', strftime('%Y-%m-%d','now'), strftime('%Y-W%W','now'), strftime('%Y-%m','now'), strftime('%Y','now'), datetime('now')),
-  ('SeolithPro', 0, 61900, 51400, 729, 1003, 'US', 'California', 'San Francisco', strftime('%Y-%m-%d','now'), strftime('%Y-W%W','now'), strftime('%Y-%m','now'), strftime('%Y','now'), datetime('now')),
-  ('VarrelDept', 1, 59400, 39200, 650, 1004, 'US', 'New York', 'New York', strftime('%Y-%m-%d','now'), strftime('%Y-W%W','now'), strftime('%Y-%m','now'), strftime('%Y','now'), datetime('now'));
+-- Tester Feedback & Bug Report Table (Readable by the AI Agent & Developers via /api/feedback)
+CREATE TABLE IF NOT EXISTS tester_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tester_name TEXT NOT NULL DEFAULT 'Anonymous',
+  category TEXT NOT NULL DEFAULT 'bug', -- 'bug' | 'improvement' | 'physics' | 'design' | 'monetization'
+  severity TEXT NOT NULL DEFAULT 'normal', -- 'low' | 'normal' | 'high' | 'critical'
+  version TEXT NOT NULL DEFAULT '1.1.0',
+  level_id INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL,
+  device_info TEXT NOT NULL DEFAULT '',
+  country TEXT NOT NULL DEFAULT 'GL',
+  region TEXT NOT NULL DEFAULT 'Global',
+  status TEXT NOT NULL DEFAULT 'open', -- 'open' | 'triaged' | 'resolved'
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON tester_feedback(status, created_at DESC);
