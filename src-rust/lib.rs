@@ -757,10 +757,12 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
 
         match level_id {
             // LEVEL 0: Viral Post #1 ("The Diagonal Chimney")
-            // Uses 4-connected (watertight) double-lined steel walls along the vertical shaft & diagonal chute!
+            // Uses 4-connected (watertight) double-lined steel walls along the vertical shaft & diagonal chute,
+            // with a 45-degree steel deflector mirror at the top of the shaft so a ball entering the shaft
+            // automatically ricochets down the diagonal chute straight into the gold-lined inner chamber!
             0 => {
-                let shaft_c = (w as f32 * 0.75) as usize;
-                let tunnel_w = 3usize;
+                let shaft_c = (w as f32 * 0.74) as usize;
+                let tunnel_w = 4usize;
 
                 // Bottom opening in the steel border
                 for c in shaft_c..(shaft_c + tunnel_w) {
@@ -773,17 +775,15 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                         set_tile(&mut STATE.tiles, c, r, TILE_EMPTY);
                     }
                     // Watertight left & right steel walls of the vertical shaft
-                    if r < peak_r - 3 {
+                    if r < peak_r - 5 {
                         set_tile(&mut STATE.tiles, shaft_c - 1, r, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, shaft_c - 2, r, TILE_WALL_STEEL);
                     }
                     set_tile(&mut STATE.tiles, shaft_c + tunnel_w, r, TILE_WALL_STEEL);
-                }
-                // Cap top of shaft with steel
-                for c in (shaft_c - 2)..=(shaft_c + tunnel_w) {
-                    set_tile(&mut STATE.tiles, c, peak_r + 1, TILE_WALL_STEEL);
+                    set_tile(&mut STATE.tiles, shaft_c + tunnel_w + 1, r, TILE_WALL_STEEL);
                 }
 
-                // Diagonal chute going down-left with watertight 2-tile-thick steel ceiling & floor (zero diagonal corner gaps!)
+                // Diagonal chute going down-left with watertight 2-tile-thick steel ceiling & floor
                 let steps = (w as f32 * 0.36) as usize;
                 let mut end_c = shaft_c;
                 let mut end_r = peak_r;
@@ -793,9 +793,8 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                     end_c = c;
                     end_r = r;
 
-                    // Carve 3x3 interior tunnel step
                     for tc in c..(c + tunnel_w) {
-                        for tr in r.saturating_sub(1)..=(r + 1) {
+                        for tr in r.saturating_sub(2)..=(r + 1) {
                             set_tile(&mut STATE.tiles, tc, tr, TILE_EMPTY);
                         }
                     }
@@ -805,16 +804,21 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 for s in 0..steps {
                     let c = shaft_c.saturating_sub(s);
                     let r = peak_r.saturating_sub(s);
-                    // Upper-left diagonal ceiling wall (2 tiles thick so no corner bleeding!)
                     if r + 2 < h - 1 {
                         set_tile(&mut STATE.tiles, c, r + 2, TILE_WALL_STEEL);
                         set_tile(&mut STATE.tiles, c.saturating_sub(1), r + 2, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, c + 1, r + 2, TILE_WALL_STEEL);
                     }
-                    // Lower-right diagonal floor wall
-                    if r >= 2 && s > 2 && s < steps - 3 {
-                        set_tile(&mut STATE.tiles, c + tunnel_w, r - 1, TILE_WALL_STEEL);
+                    if r >= 3 && s > 3 && s < steps - 3 {
                         set_tile(&mut STATE.tiles, c + tunnel_w, r - 2, TILE_WALL_STEEL);
+                        set_tile(&mut STATE.tiles, c + tunnel_w + 1, r - 2, TILE_WALL_STEEL);
                     }
+                }
+
+                // Gold trigger brick at the top-right apex of the shaft so the very first shot triggers a cascade down the chute!
+                for c in shaft_c..(shaft_c + tunnel_w) {
+                    set_tile(&mut STATE.tiles, c, peak_r + 1, TILE_BRICK_GOLD);
+                    set_tile(&mut STATE.tiles, c, peak_r + 2, TILE_WALL_STEEL);
                 }
 
                 // Inner horizontal chamber at the bottom of the diagonal chute
@@ -834,7 +838,7 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                         set_tile(&mut STATE.tiles, c, ch_top + 1, TILE_WALL_STEEL);
                     }
                 }
-                // Gold trigger bricks on the left & right ends of the chamber (breach points into the red vault!)
+                // Gold trigger bricks on the left & right ends of the chamber
                 for r in ch_bottom..=ch_top {
                     set_tile(&mut STATE.tiles, ch_left, r, TILE_BRICK_GOLD);
                     set_tile(&mut STATE.tiles, ch_left + 1, r, TILE_BRICK_GOLD);

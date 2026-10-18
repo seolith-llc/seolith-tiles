@@ -197,8 +197,8 @@ class SeolithTilesGame {
     );
 
     if (this.currentLevelId === 0) {
-      this.wasm.set_paddle_x(0.56);
-      this.aimAngleRad = 0.34;
+      this.wasm.set_paddle_x(0.74);
+      this.aimAngleRad = -0.02;
     } else if (this.currentLevelId === 1) {
       this.wasm.set_paddle_x(0.50);
       this.aimAngleRad = -0.02;
