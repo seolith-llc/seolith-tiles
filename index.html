@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0c0e" />
+  <meta name="description" content="Seolith Tiles — Satisfying Micro-Tile Brick Breaker built with Rust (WebAssembly) & Three.js. Thread the vault, trigger 1,500x ball cascades, and climb the Global & Local Leaderboards." />
+  <title>SEOLITH TILES — Satisfying Micro-Tile Brick Breaker (Rust + Three.js)</title>
+  <style>
+    :root {
+      --bg-outer: #121316;
+      --bg-arena: #0b0c0e;
+      --accent: #f26a3d;
+      --gold: #facc15;
+      --cyan: #38bdf8;
+      --lime: #a3e635;
+      --surface: rgba(20, 22, 28, 0.92);
+      --border: rgba(255, 255, 255, 0.11);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-outer);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      touch-action: none;
+    }
+
+    #app-layout {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 100dvh;
+      padding: 8px 10px;
+      gap: 6px;
+    }
+
+    /* Top HUD Bar */
+    .hud-header {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 20;
+    }
+
+    .hud-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 7px 12px;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-logo {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #e11922, #f97316, #facc15);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 13px;
+      color: #090a0f;
+      box-shadow: 0 0 12px rgba(242, 106, 61, 0.45);
+    }
+
+    .brand-title {
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .hud-actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .icon-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 9px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.13);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .icon-btn.active {
+      background: rgba(242, 106, 61, 0.22);
+      border-color: var(--accent);
+      color: #fed7aa;
+    }
+
+    .icon-btn.recording {
+      background: rgba(225, 25, 34, 0.28);
+      border-color: #ef4444;
+      color: #fca5a5;
+      animation: pulse-rec 1.1s infinite;
+    }
+
+    @keyframes pulse-rec {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+
+    /* Stats & Progress Bar Row */
+    .hud-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 5px 8px;
+      text-align: center;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      display: block;
+    }
+
+    .metric-val {
+      font-size: 14px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: #fff;
+    }
+
+    .metric-val.highlight {
+      color: var(--lime);
+    }
+
+    /* Vault Progress Bar (matches the white/gray top progress bar in the X videos!) */
+    .progress-track {
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #f8fafc, #facc15, #a3e635);
+      transition: width 0.08s linear;
+    }
+
+    /* Main Arena Container */
+    #arena-wrapper {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+
+    #canvas-frame {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-height: 100%;
+      aspect-ratio: 1 / 1.35;
+      background: var(--bg-arena);
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+    }
+
+    #game-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+
+    /* Floating Capsule Text Labels ('x3', '+3', '<->', '[-]', '★') */
+    #capsule-labels {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .cap-badge {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-size: 11px;
+      font-weight: 900;
+      color: #090a0f;
+      letter-spacing: -0.02em;
+      text-shadow: 0 1px 1px rgba(255, 255, 255, 0.45);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    /* On-screen Launch / Aim Helper Banner */
+    #aim-banner {
+      position: absolute;
+      bottom: 16%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.86);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 99px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #e2e8f0;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      transition: opacity 0.2s ease;
+    }
+
+    /* Bottom Controls Dock */
+    .hud-footer {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 7px 10px;
+      z-index: 20;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    select.ui-select {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+    }
+
+    select.ui-select option {
+      background: #14161c;
+      color: #fff;
+    }
+
+    .primary-btn {
+      background: linear-gradient(135deg, #f26a3d, #e11922);
+      border: none;
+      color: #fff;
+      padding: 6px 13px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(225, 25, 34, 0.35);
+      transition: transform 0.1s ease;
+    }
+
+    .primary-btn:active {
+      transform: scale(0.96);
+    }
+
+    /* Victory / Game Over Center Overlay (Matches the viral video's "Congratulations You win! ★★★" card!) */
+    .overlay-modal {
+      position: absolute;
+      inset: 0;
+      background: rgba(9, 10, 15, 0.72);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 35;
+    }
+
+    .overlay-modal.hidden {
+      display: none !important;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 430px;
+      max-height: 90dvh;
+      overflow-y: auto;
+      background: #181a20;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+    }
+
+    .win-title {
+      font-size: 22px;
+      font-weight: 900;
+      margin-bottom: 4px;
+      color: #fff;
+    }
+
+    .win-subtitle {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .stars-row {
+      font-size: 28px;
+      letter-spacing: 6px;
+      color: var(--gold);
+      margin: 8px 0 14px;
+      text-shadow: 0 0 16px rgba(250, 204, 21, 0.45);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .summary-box {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+    }
+
+    .modal-btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+
+    /* Customization & Leaderboard Tables */
+    .form-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .color-inputs {
+      display: flex;
+      gap: 6px;
+    }
+
+    input[type="color"] {
+      width: 30px;
+      height: 26px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: transparent;
+    }
+
+    input[type="text"] {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 7px;
+      font-size: 13px;
+      width: 150px;
+    }
+
+    .tabs-row {
+      display: flex;
+      gap: 4px;
+      margin: 10px 0;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .lb-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 12px;
+      text-align: left;
+    }
+
+    .lb-table th, .lb-table td {
+      padding: 7px 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .lb-table th {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    /* Resume Banner */
+    #resume-toast {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      border: 1px solid #38bdf8;
+      border-radius: 12px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 60;
+      box-shadow: 0 14px 35px rgba(0, 0, 0, 0.65);
+      font-size: 13px;
+    }
+
+    #resume-toast.hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- Saved Game Auto-Resume Toast -->
+  <div id="resume-toast" class="hidden">
+    <span>💾 Saved cascade in progress!</span>
+    <button id="btn-resume-saved" class="primary-btn">Resume Play</button>
+    <button id="btn-discard-saved" class="icon-btn">New</button>
+  </div>
+
+  <div id="app-layout">
+    <!-- Top HUD -->
+    <header class="hud-header">
+      <div class="hud-top-row">
+        <div class="brand-group">
+          <div class="brand-logo">S</div>
+          <div>
+            <div class="brand-title">Seolith Tiles</div>
+            <div id="geo-badge" style="font-size: 10px; color: var(--muted);">📍 Global Edge • Play #1</div>
+          </div>
+        </div>
+
+        <div class="hud-actions">
+          <button id="btn-editor-toggle" class="icon-btn" title="Paint Custom Tunnel / Bricks">✏️ Paint</button>
+          <button id="btn-record" class="icon-btn" title="Record 60FPS Gameplay Clip">⏺ Rec</button>
+          <button id="btn-customize" class="icon-btn" title="Customize Screen, Colors, 3D & Audio">🎨 Design</button>
+          <button id="btn-leaderboard" class="icon-btn" title="Daily, Weekly, Monthly, Yearly & Local Toppers">🏆 Ranks</button>
+        </div>
+      </div>
+
+      <div class="hud-metrics">
+        <div class="metric-card">
+          <span class="metric-label">Tiles Left</span>
+          <span id="hud-bricks" class="metric-val">3,400</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Active Balls</span>
+          <span id="hud-balls" class="metric-val highlight">1</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Time</span>
+          <span id="hud-time" class="metric-val">0.0s</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Score</span>
+          <span id="hud-score" class="metric-val">0</span>
+        </div>
+      </div>
+
+      <div class="progress-track">
+        <div id="hud-progress" class="progress-fill"></div>
+      </div>
+    </header>
+
+    <!-- 3D / 2.5D Micro-Tile Vault Arena -->
+    <main id="arena-wrapper">
+      <div id="canvas-frame">
+        <canvas id="game-canvas"></canvas>
+        <div id="capsule-labels"></div>
+        <div id="aim-banner">Move to aim • Tap / Click or Space to launch into the shaft!</div>
+
+        <!-- Victory / Result Modal (Matches the viral X video overlay!) -->
+        <div id="result-modal" class="overlay-modal hidden">
+          <div class="modal-card">
+            <div id="result-title" class="win-title">Congratulations!</div>
+            <div id="result-subtitle" class="win-subtitle">You cleared the vault!</div>
+            <div id="result-stars" class="stars-row">★★★</div>
+
+            <div class="summary-grid">
+              <div class="summary-box">
+                <span class="metric-label">Clear Time</span>
+                <span id="res-time" class="metric-val">42.1s</span>
+              </div>
+              <div class="summary-box">
+                <span class="metric-label">Score</span>
+                <span id="res-score" class="metric-val">64,200</span>
+              </div>
+              <div class="summary-box">
+                <span class="metric-label">Peak Balls</span>
+                <span id="res-balls" class="metric-val highlight">980</span>
+              </div>
+            </div>
+
+            <div class="modal-btn-row">
+              <button id="btn-play-again" class="primary-btn">▶ Play Again</button>
+              <button id="btn-next-level" class="icon-btn active">⏭ Next Vault</button>
+              <button id="btn-share-run" class="icon-btn">📤 Share Clip / Card</button>
+              <button id="btn-download-video" class="icon-btn hidden">⬇ Save Video</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Controls Bar -->
+    <footer class="hud-footer">
+      <div class="control-group">
+        <select id="select-level" class="ui-select" aria-label="Select Vault Level"></select>
+        <button id="btn-restart" class="icon-btn" title="Reset Current Vault">↺ Reset</button>
+      </div>
+
+      <div class="control-group">
+        <button id="btn-boost-x3" class="icon-btn active" title="Trigger instant x3 Ball Multiplier!">⚡ x3 Boost</button>
+        <button id="btn-sfx" class="icon-btn active" title="Toggle ASMR Pop Sound">🔊 ASMR</button>
+        <button id="btn-music" class="icon-btn" title="Toggle Synthwave Music">🎵 Music</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Customize Screen & Design Modal -->
+  <div id="customize-modal" class="overlay-modal hidden">
+    <div class="modal-card">
+      <div class="win-title">🎨 Screen & Vault Design</div>
+      <div class="win-subtitle">Customize theme, micro-tile density, 3D camera tilt & ASMR audio</div>
+
+      <div class="form-row">
+        <span>Player Handle</span>
+        <input type="text" id="input-player-name" maxlength="18" placeholder="Your Handle" />
+      </div>
+
+      <div class="form-row">
+        <span>Theme Preset</span>
+        <select id="select-theme" class="ui-select">
+          <option value="crimson_viral">Viral Crimson Vault (Post #1)</option>
+          <option value="sunset_amber">Viral Amber Grid (Post #2)</option>
+          <option value="seolith_obsidian">Seolith 3D Obsidian & Gold</option>
+          <option value="cyber_neon">Cyberpunk Neon 3D</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <span>Custom Colors (Brick / Gold / Paddle)</span>
+        <div class="color-inputs">
+          <input type="color" id="color-primary" value="#e11922" title="Primary Brick Color" />
+          <input type="color" id="color-gold" value="#facc15" title="Gold Trigger Brick Color" />
+          <input type="color" id="color-paddle" value="#f26a3d" title="Paddle Color" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <span>Micro-Tile Grid Density</span>
+        <select id="select-grid-size" class="ui-select">
+          <option value="48">48 × 48 (2,304 Tiles — Fast)</option>
+          <option value="56">56 × 56 (3,136 Tiles — Balanced)</option>
+          <option value="64" selected>64 × 64 (4,096 Tiles — Viral Authentic)</option>
+          <option value="76">76 × 76 (5,776 Tiles — Ultra Dense)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <span>3D Perspective Tilt</span>
+        <select id="select-tilt" class="ui-select">
+          <option value="0">0° Flat 2D (Authentic X Video)</option>
+          <option value="12">12° Tactile 2.5D</option>
+          <option value="22">22° Deep 3D Arcade</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <span>ASMR Sound Profile</span>
+        <select id="select-sound-profile" class="ui-select">
+          <option value="asmr-wood">Tactile Wood/Tick (Viral Video)</option>
+          <option value="crystal-chime">Harmonic Crystal Chime</option>
+          <option value="retro-8bit">Retro 8-Bit Arcade</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <span>Level Paint Brush (when ✏️ Paint is active)</span>
+        <select id="select-paint-brush" class="ui-select">
+          <option value="0">Carve Tunnel (Empty)</option>
+          <option value="2">Gold Trigger Brick (x3 Drop)</option>
+          <option value="4">Steel Indestructible Wall</option>
+          <option value="1">Primary Micro-Brick</option>
+        </select>
+      </div>
+
+      <div class="modal-btn-row">
+        <button id="btn-close-customize" class="primary-btn">Save & Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboards Modal (Daily / Weekly / Monthly / Yearly + Location Scope) -->
+  <div id="leaderboard-modal" class="overlay-modal hidden">
+    <div class="modal-card">
+      <div class="win-title">🏆 Time & Points Toppers</div>
+      <div id="lb-location-subtitle" class="win-subtitle">Ranked by fastest clear time & points</div>
+
+      <!-- Time Window Tabs -->
+      <div class="tabs-row" id="lb-period-tabs">
+        <button class="icon-btn active" data-period="daily">Daily</button>
+        <button class="icon-btn" data-period="weekly">Weekly</button>
+        <button class="icon-btn" data-period="monthly">Monthly</button>
+        <button class="icon-btn" data-period="yearly">Yearly</button>
+      </div>
+
+      <!-- Geo Location Tabs -->
+      <div class="tabs-row" id="lb-scope-tabs">
+        <button class="icon-btn active" data-scope="global">🌍 Global</button>
+        <button class="icon-btn" data-scope="country">🏳️ Country</button>
+        <button class="icon-btn" data-scope="region">📍 Region/City</button>
+      </div>
+
+      <!-- Sort Metric Toggle -->
+      <div class="tabs-row" id="lb-sort-tabs">
+        <button class="icon-btn active" data-sort="time">⏱ Fastest Time</button>
+        <button class="icon-btn" data-sort="score">💎 Highest Points</button>
+      </div>
+
+      <div style="max-height: 240px; overflow-y: auto;">
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Time</th>
+              <th>Score</th>
+              <th>Balls</th>
+              <th>Loc</th>
+            </tr>
+          </thead>
+          <tbody id="lb-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-btn-row">
+        <button id="btn-close-leaderboard" class="primary-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 100-Play Monetization Gate Modal -->
+  <div id="monetization-modal" class="overlay-modal hidden">
+    <div class="modal-card">
+      <div class="win-title">👑 100 Plays Milestone Unlocked!</div>
+      <div class="win-subtitle">
+        You've played <strong id="monetize-play-count">100</strong> rounds of Seolith Tiles!
+        Support the arcade server or claim a sponsored pass to unlock unlimited Pro Vaults & +25 instant x3 Boosts.
+      </div>
+      <div class="stars-row">⚡ 💎 ⚡</div>
+      <div class="modal-btn-row">
+        <button id="btn-unlock-pro" class="primary-btn">✨ Activate Seolith Pro Pass ($2.99 / Instant Demo Unlock)</button>
+        <button id="btn-watch-rewarded" class="icon-btn">🎬 Watch 5s Sponsor Spot (+5 Free Plays)</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

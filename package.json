@@ -1,0 +1,22 @@
+{
+  "name": "seolith-tiles",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Satisfying Micro-Tile Brick Breaker built with Rust (WASM), Three.js, and Cloudflare Workers + D1",
+  "scripts": {
+    "build:wasm": "cargo build --target wasm32-unknown-unknown --release && node -e \"import('fs').then(fs => { fs.mkdirSync('public/wasm', {recursive: true}); fs.copyFileSync('target/wasm32-unknown-unknown/release/seolith_engine.wasm', 'public/wasm/seolith_engine.wasm'); })\"",
+    "dev": "vite",
+    "build": "npm run build:wasm && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "prompts:consolidate": "node scripts/consolidate-prompts.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "wrangler": "^4.0.0"
+  }
+}

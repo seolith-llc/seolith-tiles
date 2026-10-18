@@ -1,0 +1,17 @@
+[package]
+name = "seolith-engine"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance Rust + WebAssembly micro-tile physics & brick-breaker simulation engine for seolith-tiles"
+
+[lib]
+name = "seolith_engine"
+path = "src-rust/lib.rs"
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
