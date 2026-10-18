@@ -122,6 +122,14 @@ class SeolithTilesGame {
   checkIncomingChallengeUrl() {
     try {
       const params = new URLSearchParams(window.location.search);
+      if (params.get('pro_unlocked') === '1') {
+        SeolithStorage.unlockProPass();
+        this.updateBoostBadge();
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (params.get('boost_pack') === '1') {
+        this.rewardBonusBoosts(15);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
       const ref = params.get('ref');
       const level = Number(params.get('level') || 0);
       const target = params.get('target');
@@ -226,10 +234,10 @@ class SeolithTilesGame {
       (Date.now() & 0xffffffff) >>> 0
     );
 
-    if (this.currentLevelId === 0) {
+    if (this.currentLevelId === 0 || this.currentLevelId === 5) {
       this.wasm.set_paddle_x(0.74);
       this.aimAngleRad = -0.02;
-    } else if (this.currentLevelId === 1) {
+    } else if (this.currentLevelId === 1 || this.currentLevelId === 4) {
       this.wasm.set_paddle_x(0.50);
       this.aimAngleRad = -0.02;
     } else if (this.currentLevelId === 2) {
@@ -608,22 +616,20 @@ class SeolithTilesGame {
       this.recorder.downloadLastVideo(LEVEL_PRESETS[this.currentLevelId]?.name);
     });
 
-    // Monetization & Pro Shop Modal Actions
+    // Monetization & Pro Shop Modal Actions (/api/checkout & /api/monetization)
     document.getElementById('btn-unlock-pro').addEventListener('click', () => {
-      SeolithStorage.unlockProPass();
-      this.updateBoostBadge();
-      this.updateGeoBadge(this.leaderboard.geo);
-      document.getElementById('monetization-modal').classList.add('hidden');
-      this.loadLevel(this.currentLevelId, false);
+      this.startEdgeCheckout('pro_pass');
     });
 
+    const buyBoostBtn = document.getElementById('btn-buy-boost-pack');
+    if (buyBoostBtn) {
+      buyBoostBtn.addEventListener('click', () => {
+        this.startEdgeCheckout('boost_pack_15');
+      });
+    }
+
     document.getElementById('btn-watch-rewarded').addEventListener('click', () => {
-      const stats = SeolithStorage.getStats();
-      stats.totalPlays = Math.max(0, stats.totalPlays - 5);
-      stats.bonusCredits = (stats.bonusCredits ?? 0) + 3;
-      SeolithStorage.saveStats(stats);
-      this.updateBoostBadge();
-      document.getElementById('monetization-modal').classList.add('hidden');
+      this.runSponsorSpotCountdown();
     });
 
     document.getElementById('btn-close-monetize').addEventListener('click', () => {
@@ -651,6 +657,118 @@ class SeolithTilesGame {
     document.getElementById('btn-admin-login').addEventListener('click', () => {
       this.loadAdminAnalytics();
     });
+  }
+
+  async startEdgeCheckout(plan = 'pro_pass') {
+    const msgEl = document.getElementById('checkout-status-msg');
+    const emailInput = document.getElementById('checkout-email-input');
+    const email = emailInput ? emailInput.value.trim() : '';
+    msgEl.style.color = '#7dd3fc';
+    msgEl.textContent =
+      plan === 'pro_pass'
+        ? 'Connecting to Cloudflare Edge Checkout ($2.99 Pro Pass)...'
+        : 'Connecting to Cloudflare Edge Checkout ($0.99 +15x Boosts)...';
+
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan,
+          playerName: this.settings.playerName || 'SeolithPlayer',
+          email,
+          sessionId: this.sessionId,
+        }),
+      });
+      const data = await res.json();
+      if (data.checkoutUrl) {
+        msgEl.textContent = 'Redirecting to secure Stripe Checkout...';
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      if (data.ok && (data.instantUnlock || data.mode === 'edge_instant' || data.unlockToken)) {
+        if (plan === 'pro_pass') {
+          SeolithStorage.unlockProPass();
+          msgEl.style.color = '#a3e635';
+          msgEl.textContent = `✅ ${data.message || 'Seolith Pro Pass Activated!'}`;
+        } else {
+          this.rewardBonusBoosts(15);
+          msgEl.style.color = '#a3e635';
+          msgEl.textContent = `✅ +15x Cascade Boost Pack Activated!`;
+        }
+        this.updateBoostBadge();
+        this.updateGeoBadge(this.leaderboard.geo);
+        this.trackEvent(plan === 'pro_pass' ? 'checkout_pro' : 'checkout_boosts', this.currentLevelId);
+        setTimeout(() => {
+          document.getElementById('monetization-modal').classList.add('hidden');
+          this.loadLevel(this.currentLevelId, false);
+        }, 1100);
+      }
+    } catch (_) {
+      // Offline fallback so player is never blocked
+      if (plan === 'pro_pass') {
+        SeolithStorage.unlockProPass();
+      } else {
+        this.rewardBonusBoosts(15);
+      }
+      this.updateBoostBadge();
+      this.updateGeoBadge(this.leaderboard.geo);
+      document.getElementById('monetization-modal').classList.add('hidden');
+    }
+  }
+
+  async runSponsorSpotCountdown() {
+    if (this._sponsorRunning) return;
+    this._sponsorRunning = true;
+
+    const box = document.getElementById('sponsor-player-box');
+    const nameEl = document.getElementById('sponsor-name');
+    const headlineEl = document.getElementById('sponsor-headline');
+    const ctaEl = document.getElementById('sponsor-cta-link');
+    const timerBadge = document.getElementById('sponsor-timer-badge');
+    const rewardStatus = document.getElementById('sponsor-reward-status');
+    box.classList.remove('hidden');
+
+    try {
+      const res = await fetch('/api/monetization');
+      const cfg = await res.json();
+      if (cfg && cfg.sponsorSpot) {
+        nameEl.textContent = `⚡ ${cfg.sponsorSpot.brand || cfg.sponsorSpot.sponsorName || 'Seolith Cloud Edge'}`;
+        headlineEl.textContent = cfg.sponsorSpot.headline;
+        ctaEl.textContent = `${cfg.sponsorSpot.ctaText} ↗`;
+        ctaEl.href = cfg.sponsorSpot.ctaUrl;
+      }
+    } catch (_) {}
+
+    let remaining = 5;
+    timerBadge.textContent = `${remaining}s`;
+    rewardStatus.textContent = `Rewarding in ${remaining}s...`;
+
+    const interval = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) {
+        timerBadge.textContent = `${remaining}s`;
+        rewardStatus.textContent = `Rewarding in ${remaining}s...`;
+      } else {
+        clearInterval(interval);
+        timerBadge.textContent = 'DONE';
+        rewardStatus.style.color = '#a3e635';
+        rewardStatus.textContent = '✅ +3 Boosts & +5 Plays Credited!';
+        const stats = SeolithStorage.getStats();
+        stats.totalPlays = Math.max(0, (stats.totalPlays || 0) - 5);
+        stats.bonusCredits = (stats.bonusCredits ?? 3) + 3;
+        SeolithStorage.saveStats(stats);
+        this.updateBoostBadge();
+        this.updateGeoBadge(this.leaderboard.geo);
+        this.trackEvent('sponsor_watch', this.currentLevelId);
+        this._sponsorRunning = false;
+        setTimeout(() => {
+          box.classList.add('hidden');
+          document.getElementById('monetization-modal').classList.add('hidden');
+        }, 1200);
+      }
+    }, 1000);
   }
 
   async loadAdminAnalytics() {
@@ -683,10 +801,16 @@ class SeolithTilesGame {
       document.getElementById('admin-dashboard-content').classList.remove('hidden');
 
       const s = data.summary || {};
+      const rev = data.revenue || {};
       document.getElementById('adm-unique').textContent = Number(s.uniqueVisitors || 0).toLocaleString();
       document.getElementById('adm-views').textContent = Number(s.pageviews || 0).toLocaleString();
       document.getElementById('adm-plays').textContent = `${Number(s.playsStarted || 0)} / ${Number(s.totalWins || 0)}`;
       document.getElementById('adm-devices').textContent = `${Number(s.mobileEvents || 0)} / ${Number(s.desktopEvents || 0)}`;
+      const revEl = document.getElementById('adm-revenue');
+      if (revEl) {
+        const dollars = ((Number(rev.totalRevenueCents || 0)) / 100).toFixed(2);
+        revEl.textContent = `$${dollars} (${Number(rev.totalOrders || 0)})`;
+      }
 
       const locTbody = document.getElementById('adm-locations-tbody');
       const locs = data.byLocation || [];

@@ -69,3 +69,21 @@ CREATE TABLE IF NOT EXISTS visitor_events (
 CREATE INDEX IF NOT EXISTS idx_analytics_day ON visitor_events(day_key, event_type);
 CREATE INDEX IF NOT EXISTS idx_analytics_country ON visitor_events(country, region, city);
 CREATE INDEX IF NOT EXISTS idx_analytics_created ON visitor_events(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS monetization_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id TEXT NOT NULL,
+  player_name TEXT NOT NULL DEFAULT 'Anon',
+  customer_email TEXT NOT NULL DEFAULT '',
+  plan_type TEXT NOT NULL DEFAULT 'pro_pass',
+  amount_cents INTEGER NOT NULL DEFAULT 299,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  status TEXT NOT NULL DEFAULT 'completed',
+  country TEXT NOT NULL DEFAULT 'GL',
+  region TEXT NOT NULL DEFAULT 'Global',
+  city TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_created ON monetization_orders(created_at DESC);
+

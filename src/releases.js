@@ -1,9 +1,20 @@
 // src/releases.js
 // Version Registry & Release Notes History for Seolith Tiles
 
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.3.0';
 
 export const RELEASE_NOTES = [
+  {
+    version: '1.3.0',
+    date: '2026-10-18',
+    title: 'Edge Checkout & Monetization Engine, Interactive 5s Sponsor Spot & 6 Viral Vaults',
+    highlights: [
+      '💳 Live Edge Checkout Engine (/api/checkout & /api/monetization): Supports Stripe Checkout Sessions, Payment Links, and Instant Edge Founding Supporter Pass ($2.99 Pro Pass & $0.99 +15x Boost Pack) logged in Cloudflare D1 (monetization_orders).',
+      '🎬 Interactive 5-Second Sponsor Spot: Players can watch a live 5-second countdown sponsor card with clickable partner CTA to earn +3 x3 Boosts & +5 Free Plays.',
+      '🧱 2 New High-Dopamine Viral Vaults: Added 05. The Hourglass Funnel and 06. The Golden Spiral Vault in the Rust WASM engine.',
+      '📊 Admin Revenue Telemetry: Added Total Orders & Revenue ($) metrics to the protected 📊 Admin dashboard.',
+    ],
+  },
   {
     version: '1.2.0',
     date: '2026-10-18',

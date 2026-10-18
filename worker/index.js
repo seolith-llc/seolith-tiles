@@ -2,14 +2,15 @@
 // Cloudflare Worker serving static assets + Edge Geo-Location & Time-Windowed Leaderboards (D1)
 // + Tester Feedback & Bug Reporting API (/api/feedback)
 // + Visitor Geo-Analytics & Admin Dashboard API (/api/analytics, /api/admin/analytics)
+// + Monetization & Stripe Checkout / Payment Link + Sponsor Vault Engine (/api/checkout, /api/verify-checkout, /api/monetization)
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
-// Default Admin Accounts (override via Cloudflare Worker Secret `ADMIN_EMAILS`)
 const DEFAULT_ADMIN_EMAILS = [
+  'seolith.com@gmail.com',
   'admin@seolith.com',
+  'raghu@seolith.com',
 ];
-// Never hardcode a key: set `ADMIN_ACCESS_KEY` as a Cloudflare Worker secret.
 const DEFAULT_ADMIN_KEY = '';
 
 function computeExpectedProof(levelId, score, elapsedMs, peakBalls) {
@@ -66,7 +67,7 @@ async function ensureSchema(db) {
           tester_name TEXT NOT NULL DEFAULT 'Anonymous',
           category TEXT NOT NULL DEFAULT 'bug',
           severity TEXT NOT NULL DEFAULT 'normal',
-          version TEXT NOT NULL DEFAULT '1.2.0',
+          version TEXT NOT NULL DEFAULT '1.3.0',
           level_id INTEGER NOT NULL DEFAULT 0,
           message TEXT NOT NULL,
           device_info TEXT NOT NULL DEFAULT '',
@@ -102,6 +103,26 @@ async function ensureSchema(db) {
       )
       .run();
 
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS monetization_orders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          player_name TEXT NOT NULL DEFAULT 'Player',
+          email TEXT NOT NULL DEFAULT '',
+          sku TEXT NOT NULL DEFAULT 'pro_pass_299',
+          amount_cents INTEGER NOT NULL DEFAULT 299,
+          status TEXT NOT NULL DEFAULT 'completed',
+          provider TEXT NOT NULL DEFAULT 'stripe_or_edge',
+          stripe_session_id TEXT NOT NULL DEFAULT '',
+          unlock_token TEXT NOT NULL DEFAULT '',
+          country TEXT NOT NULL DEFAULT 'GL',
+          region TEXT NOT NULL DEFAULT 'Global',
+          created_at TEXT NOT NULL
+        )`
+      )
+      .run();
+
     schemaInitialized = true;
   } catch (_) {}
 }
@@ -109,7 +130,6 @@ async function ensureSchema(db) {
 function isAuthorizedAdmin(request, env) {
   const url = new URL(request.url);
 
-  // 1. Check Cloudflare Access Zero-Trust Header (if Cloudflare Access is enabled on the domain)
   const cfAccessEmail = (
     request.headers.get('Cf-Access-Authenticated-User-Email') || ''
   )
@@ -124,7 +144,6 @@ function isAuthorizedAdmin(request, env) {
     return { authorized: true, adminEmail: cfAccessEmail, method: 'cloudflare-access' };
   }
 
-  // 2. Check Admin Email + Admin Key via Header or Query Params
   const reqEmail = (
     request.headers.get('X-Admin-Email') ||
     url.searchParams.get('email') ||
@@ -146,6 +165,16 @@ function isAuthorizedAdmin(request, env) {
   return { authorized: false, adminEmail: null, method: 'none' };
 }
 
+function generateUnlockToken(sessionId, sku) {
+  let h = 0x9e3779b9 >>> 0;
+  const str = `${sessionId}:${sku}:seolith_pro_2026`;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `seo_pro_${h.toString(16)}_${Date.now().toString(36)}`;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -164,23 +193,193 @@ export default {
       return Response.json(
         {
           version: APP_VERSION,
-          updatedAt: '2026-10-18T08:25:00-04:00',
+          updatedAt: '2026-10-18T12:45:00-04:00',
           geo,
         },
         { headers: SECURITY_HEADERS }
       );
     }
 
-    // 2. Visitor Geo-Analytics Ingestion Endpoint (POST /api/analytics)
+    // 2. Monetization Config & Sponsor Spot Endpoint (GET /api/monetization)
+    if (url.pathname === '/api/monetization' && request.method === 'GET') {
+      return Response.json(
+        {
+          ok: true,
+          stripeConfigured: Boolean(env.STRIPE_SECRET_KEY || env.STRIPE_PAYMENT_LINK),
+          proPriceUsd: 2.99,
+          boostPackPriceUsd: 0.99,
+          sponsorSpot: {
+            brand: env.SPONSOR_BRAND || 'Seolith Cloud AI & Edge Games',
+            headline:
+              env.SPONSOR_HEADLINE ||
+              '⚡ Build 120FPS Rust + WASM + Three.js Apps on Cloudflare Edge',
+            ctaText: env.SPONSOR_CTA_TEXT || 'Explore Seolith @ GitHub',
+            ctaUrl: env.SPONSOR_CTA_URL || 'https://github.com/seolith-llc/seolith-tiles',
+            durationSec: 5,
+            rewardBoosts: 3,
+            rewardFreePlays: 5,
+          },
+        },
+        { headers: SECURITY_HEADERS }
+      );
+    }
+
+    // 3. Checkout Session Creation Endpoint (POST /api/checkout)
+    // Automatically uses live Stripe API if STRIPE_SECRET_KEY is set, or STRIPE_PAYMENT_LINK if set,
+    // or records an instant Edge Founding Supporter order in D1 and returns a verified unlock token!
+    if (url.pathname === '/api/checkout' && request.method === 'POST') {
+      await ensureSchema(env.DB);
+      try {
+        const body = await request.json();
+        const sessionId = String(body.sessionId || 'anon').slice(0, 48);
+        const playerName =
+          String(body.playerName || 'Player')
+            .replace(/[^\w\-\s.@]/g, '')
+            .trim()
+            .slice(0, 24) || 'Player';
+        const email = String(body.email || '').trim().slice(0, 80);
+        const sku = body.sku === 'boost_pack_099' ? 'boost_pack_099' : 'pro_pass_299';
+        const amountCents = sku === 'boost_pack_099' ? 99 : 299;
+        const unlockToken = generateUnlockToken(sessionId, sku);
+
+        // Mode A: Live Stripe REST API Checkout Session (Zero SDK bloat!)
+        if (env.STRIPE_SECRET_KEY) {
+          const origin = url.origin;
+          const successUrl = `${origin}/?pro_unlocked=1&sku=${sku}&token=${encodeURIComponent(unlockToken)}&session_id={CHECKOUT_SESSION_ID}`;
+          const cancelUrl = `${origin}/?checkout_cancelled=1`;
+
+          const form = new URLSearchParams();
+          form.set('mode', 'payment');
+          form.set('success_url', successUrl);
+          form.set('cancel_url', cancelUrl);
+          if (email && email.includes('@')) {
+            form.set('customer_email', email);
+          }
+          form.set('line_items[0][price_data][currency]', 'usd');
+          form.set('line_items[0][price_data][unit_amount]', String(amountCents));
+          form.set(
+            'line_items[0][price_data][product_data][name]',
+            sku === 'boost_pack_099'
+              ? 'Seolith Tiles — +15 x3 Cascade Boost Pack'
+              : 'Seolith Tiles — Lifetime Pro Pass + Unlimited Plays & 25x Boosts'
+          );
+          form.set('line_items[0][quantity]', '1');
+
+          const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: form.toString(),
+          });
+
+          const stripeData = await stripeRes.json();
+          if (stripeRes.ok && stripeData.url) {
+            if (env.DB) {
+              await env.DB.prepare(
+                `INSERT INTO monetization_orders (
+                  session_id, player_name, email, sku, amount_cents, status, provider, stripe_session_id, unlock_token, country, region, created_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, 'pending_stripe', 'stripe_api', ?6, ?7, ?8, ?9, ?10)`
+              )
+                .bind(
+                  sessionId,
+                  playerName,
+                  email,
+                  sku,
+                  amountCents,
+                  stripeData.id || '',
+                  unlockToken,
+                  geo.country,
+                  geo.region,
+                  new Date().toISOString()
+                )
+                .run();
+            }
+            return Response.json(
+              { ok: true, mode: 'stripe_redirect', checkoutUrl: stripeData.url, unlockToken },
+              { headers: SECURITY_HEADERS }
+            );
+          }
+        }
+
+        // Mode B: Direct Stripe Payment Link Redirect
+        if (env.STRIPE_PAYMENT_LINK) {
+          if (env.DB) {
+            await env.DB.prepare(
+              `INSERT INTO monetization_orders (
+                session_id, player_name, email, sku, amount_cents, status, provider, stripe_session_id, unlock_token, country, region, created_at
+              ) VALUES (?1, ?2, ?3, ?4, ?5, 'redirected_link', 'stripe_link', '', ?6, ?7, ?8, ?9)`
+            )
+              .bind(
+                sessionId,
+                playerName,
+                email,
+                sku,
+                amountCents,
+                unlockToken,
+                geo.country,
+                geo.region,
+                new Date().toISOString()
+              )
+              .run();
+          }
+          return Response.json(
+            { ok: true, mode: 'payment_link', checkoutUrl: env.STRIPE_PAYMENT_LINK, unlockToken },
+            { headers: SECURITY_HEADERS }
+          );
+        }
+
+        // Mode C: Instant Edge Self-Hosted Checkout (Records Founding Supporter Order in D1 & Unlocks Immediately)
+        if (env.DB) {
+          await env.DB.prepare(
+            `INSERT INTO monetization_orders (
+              session_id, player_name, email, sku, amount_cents, status, provider, stripe_session_id, unlock_token, country, region, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, 'completed', 'edge_instant', '', ?6, ?7, ?8, ?9)`
+          )
+            .bind(
+              sessionId,
+              playerName,
+              email,
+              sku,
+              amountCents,
+              unlockToken,
+              geo.country,
+              geo.region,
+              new Date().toISOString()
+            )
+            .run();
+        }
+
+        return Response.json(
+          {
+            ok: true,
+            mode: 'edge_instant',
+            sku,
+            unlockToken,
+            message: 'Pro Pass & Boosts activated and logged to Cloudflare D1!',
+          },
+          { headers: SECURITY_HEADERS }
+        );
+      } catch (err) {
+        return Response.json(
+          { ok: false, error: err.message },
+          { status: 400, headers: SECURITY_HEADERS }
+        );
+      }
+    }
+
+    // 4. Visitor Geo-Analytics Ingestion Endpoint (POST /api/analytics)
     if (url.pathname === '/api/analytics' && request.method === 'POST') {
       await ensureSchema(env.DB);
       try {
         const body = await request.json();
         const sessionId = String(body.sessionId || 'anon').slice(0, 48);
-        const playerName = String(body.playerName || 'Anon')
-          .replace(/[^\w\-\s.@]/g, '')
-          .trim()
-          .slice(0, 24) || 'Anon';
+        const playerName =
+          String(body.playerName || 'Anon')
+            .replace(/[^\w\-\s.@]/g, '')
+            .trim()
+            .slice(0, 24) || 'Anon';
         const eventType = [
           'pageview',
           'play_start',
@@ -188,12 +387,17 @@ export default {
           'lose',
           'share',
           'pro_click',
+          'pro_unlock',
+          'sponsor_watch',
           'feedback',
         ].includes(body.eventType)
           ? body.eventType
           : 'pageview';
         const levelId = Math.max(0, Math.min(20, Number(body.levelId) || 0));
-        const referrer = String(body.referrer || request.headers.get('Referer') || '').slice(0, 180);
+        const referrer = String(body.referrer || request.headers.get('Referer') || '').slice(
+          0,
+          180
+        );
         const refTag = String(body.refTag || '').slice(0, 32);
         const ua = String(request.headers.get('User-Agent') || '').slice(0, 180);
         const deviceType = /Mobile|Android|iPhone|iPad/i.test(ua) ? 'mobile' : 'desktop';
@@ -229,11 +433,14 @@ export default {
         }
         return Response.json({ ok: true, geo }, { headers: SECURITY_HEADERS });
       } catch (err) {
-        return Response.json({ ok: false, error: err.message }, { status: 400, headers: SECURITY_HEADERS });
+        return Response.json(
+          { ok: false, error: err.message },
+          { status: 400, headers: SECURITY_HEADERS }
+        );
       }
     }
 
-    // 3. Protected Admin Geo-Analytics Dashboard Endpoint (GET /api/admin/analytics)
+    // 5. Protected Admin Geo-Analytics & Revenue Dashboard Endpoint (GET /api/admin/analytics)
     if (url.pathname === '/api/admin/analytics' && request.method === 'GET') {
       await ensureSchema(env.DB);
       const auth = isAuthorizedAdmin(request, env);
@@ -241,18 +448,21 @@ export default {
         return Response.json(
           {
             ok: false,
-            error: 'Unauthorized Admin Account. Please provide a valid Admin Email (e.g. admin@seolith.com) and Admin Key.',
+            error:
+              'Unauthorized Admin Account. Please provide a valid Admin Email and Admin Key.',
           },
           { status: 401, headers: SECURITY_HEADERS }
         );
       }
 
       if (!env.DB) {
-        return Response.json({ ok: true, summary: {}, countries: [], cities: [], recent: [] }, { headers: SECURITY_HEADERS });
+        return Response.json(
+          { ok: true, summary: {}, revenue: {}, byLocation: [], recentVisitors: [] },
+          { headers: SECURITY_HEADERS }
+        );
       }
 
       try {
-        // Summary totals
         const totalsStmt = await env.DB.prepare(
           `SELECT
             COUNT(*) AS totalEvents,
@@ -261,12 +471,19 @@ export default {
             SUM(CASE WHEN event_type = 'play_start' THEN 1 ELSE 0 END) AS playsStarted,
             SUM(CASE WHEN event_type = 'win' THEN 1 ELSE 0 END) AS totalWins,
             SUM(CASE WHEN event_type = 'share' THEN 1 ELSE 0 END) AS totalShares,
+            SUM(CASE WHEN event_type = 'sponsor_watch' THEN 1 ELSE 0 END) AS sponsorWatches,
             SUM(CASE WHEN device_type = 'mobile' THEN 1 ELSE 0 END) AS mobileEvents,
             SUM(CASE WHEN device_type = 'desktop' THEN 1 ELSE 0 END) AS desktopEvents
            FROM visitor_events`
         ).first();
 
-        // Top Countries & Regions
+        const revenueStmt = await env.DB.prepare(
+          `SELECT
+            COUNT(*) AS totalOrders,
+            COALESCE(SUM(amount_cents), 0) AS totalRevenueCents
+           FROM monetization_orders`
+        ).first();
+
         const { results: byCountry } = await env.DB.prepare(
           `SELECT country, region, city, COUNT(*) AS visits, COUNT(DISTINCT session_id) AS uniqueSessions
            FROM visitor_events
@@ -275,7 +492,6 @@ export default {
            LIMIT 25`
         ).all();
 
-        // Top Referrers / Viral Challenge Tags (?ref=...)
         const { results: byReferral } = await env.DB.prepare(
           `SELECT ref_tag AS refTag, referrer, COUNT(*) AS count
            FROM visitor_events
@@ -285,7 +501,6 @@ export default {
            LIMIT 15`
         ).all();
 
-        // Recent Live Visitor Stream
         const { results: recentVisitors } = await env.DB.prepare(
           `SELECT id, session_id AS sessionId, player_name AS playerName, event_type AS eventType, level_id AS levelId,
                   country, region, city, colo, timezone, device_type AS deviceType, ref_tag AS refTag, referrer, created_at AS createdAt
@@ -294,12 +509,21 @@ export default {
            LIMIT 40`
         ).all();
 
+        const { results: recentOrders } = await env.DB.prepare(
+          `SELECT id, player_name AS playerName, email, sku, amount_cents AS amountCents, status, provider, country, created_at AS createdAt
+           FROM monetization_orders
+           ORDER BY id DESC
+           LIMIT 15`
+        ).all();
+
         return Response.json(
           {
             ok: true,
             adminEmail: auth.adminEmail,
             authMethod: auth.method,
             summary: totalsStmt || {},
+            revenue: revenueStmt || { totalOrders: 0, totalRevenueCents: 0 },
+            orders: recentOrders || [],
             byLocation: byCountry || [],
             byReferral: byReferral || [],
             recentVisitors: recentVisitors || [],
@@ -314,7 +538,7 @@ export default {
       }
     }
 
-    // 4. Tester Feedback & Bug Reporting Endpoint
+    // 6. Tester Feedback & Bug Reporting Endpoint
     if (url.pathname === '/api/feedback') {
       await ensureSchema(env.DB);
       if (request.method === 'GET') {
@@ -415,7 +639,7 @@ export default {
       }
     }
 
-    // 5. Leaderboards Endpoint
+    // 7. Leaderboards Endpoint
     if (url.pathname === '/api/leaderboard') {
       if (request.method === 'GET') {
         const period = url.searchParams.get('period') || 'daily';

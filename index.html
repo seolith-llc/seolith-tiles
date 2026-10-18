@@ -591,7 +591,7 @@
           <div>
             <div class="brand-title">
               Seolith Tiles
-              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.2.0</span>
+              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.3.0</span>
             </div>
             <div id="geo-badge" style="font-size: 10px; color: var(--muted);">📍 Global Edge • Play #1</div>
           </div>
@@ -947,22 +947,45 @@ Player          Three.js UI       Rust WASM         Cloudflare D1
       <div class="win-title">👑 Seolith Pro Pass & Boost Shop</div>
       <div class="win-subtitle">
         Played <strong id="monetize-play-count">1</strong> rounds • Free Plays Remaining Before Gate: <strong id="monetize-free-left">99</strong><br/>
-        Upgrade now or share with friends to unlock instant 1,500-ball cascades!
+        Upgrade now, grab a Boost Pack, or watch a 5s Sponsor Spot to unleash 1,600-ball cascades!
       </div>
       <div class="stars-row">⚡ 💎 ⚡</div>
 
-      <div class="doc-box" style="margin-bottom:12px;">
+      <div class="doc-box" style="margin-bottom:10px;">
         <ul>
           <li><strong>👑 Seolith Pro Pass ($2.99 Lifetime)</strong>: Unlimited plays past the 100-play gate, automatic Gold Safety Floor at launch, +25 `⚡ x3 Boosts`, and Verified Pro Badge on Leaderboards.</li>
-          <li><strong>📤 Viral Share Reward (FREE)</strong>: Share your challenge link on X or WhatsApp to get <strong>+3 `⚡ x3 Boosts`</strong> immediately!</li>
-          <li><strong>🎬 Rewarded Sponsor Spot (FREE)</strong>: Watch a 5-second sponsor spot for <strong>+3 `⚡ x3 Boosts` & +5 Free Plays</strong>.</li>
+          <li><strong>⚡ +15x Cascade Boost Pack ($0.99)</strong>: Instant pack of 15 `⚡ x3 Multiplier + Safety Floor` boosts.</li>
+          <li><strong>🎬 5s Sponsor Spot (FREE)</strong>: Watch a 5-second partner spot for <strong>+3 `⚡ x3 Boosts` & +5 Free Plays</strong>.</li>
         </ul>
       </div>
 
+      <div class="form-row" style="padding:6px 0;margin-bottom:6px;">
+        <span>Receipt / Account Email (optional)</span>
+        <input type="email" id="checkout-email-input" placeholder="you@domain.com" style="background:rgba(255,255,255,0.08);border:1px solid var(--border);color:#fff;padding:6px 10px;border-radius:7px;width:190px;font-size:12px;" />
+      </div>
+
+      <div id="checkout-status-msg" style="font-size:11px;color:#a3e635;min-height:15px;margin:4px 0;"></div>
+
+      <!-- Interactive 5-Second Sponsor Spot Player -->
+      <div id="sponsor-player-box" class="hidden" style="background:rgba(250,204,21,0.09);border:1px solid rgba(250,204,21,0.4);border-radius:12px;padding:12px;margin:8px 0;text-align:left;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span id="sponsor-name" style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;">⚡ Seolith Cloud Edge</span>
+          <span id="sponsor-timer-badge" style="font-size:11px;font-weight:900;background:#facc15;color:#090a0f;padding:2px 8px;border-radius:99px;">5s</span>
+        </div>
+        <div id="sponsor-headline" style="font-size:12px;color:#e2e8f0;margin-bottom:8px;line-height:1.4;">
+          Powered by Rust WASM + Three.js InstancedMesh at 120 FPS on Cloudflare Workers & D1.
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <a id="sponsor-cta-link" href="https://github.com/seolith-llc/seolith-tiles" target="_blank" rel="noopener" style="font-size:11px;font-weight:800;color:#7dd3fc;text-decoration:underline;">Star Seolith Tiles on GitHub ↗</a>
+          <span id="sponsor-reward-status" style="font-size:11px;color:#cbd5e1;">Rewarding in 5s...</span>
+        </div>
+      </div>
+
       <div class="modal-btn-row">
-        <button id="btn-unlock-pro" class="primary-btn">✨ Unlock Seolith Pro Pass ($2.99 / Instant Demo Activate)</button>
-        <button id="btn-watch-rewarded" class="icon-btn gold-btn">🎬 5s Sponsor Spot (+3 Boosts)</button>
-        <button id="btn-share-for-boosts" class="icon-btn active">𝕏 Share on X (+3 Boosts)</button>
+        <button id="btn-unlock-pro" class="primary-btn">💳 Unlock Seolith Pro Pass ($2.99)</button>
+        <button id="btn-buy-boost-pack" class="icon-btn gold-btn">⚡ Buy +15 Boosts ($0.99)</button>
+        <button id="btn-watch-rewarded" class="icon-btn active">🎬 5s Sponsor Spot (+3 Boosts)</button>
+        <button id="btn-share-for-boosts" class="icon-btn">𝕏 Share (+3 Boosts)</button>
         <button id="btn-close-monetize" class="icon-btn">Later</button>
       </div>
     </div>
@@ -970,10 +993,10 @@ Player          Three.js UI       Rust WASM         Cloudflare D1
 
   <!-- Protected Admin Geo-Analytics Dashboard Modal -->
   <div id="admin-modal" class="overlay-modal hidden">
-    <div class="modal-card" style="max-width:540px;">
-      <div class="win-title">📊 Admin Geo-Analytics & Visitor Telemetry</div>
+    <div class="modal-card" style="max-width:560px;">
+      <div class="win-title">📊 Admin Geo-Analytics & Revenue Telemetry</div>
       <div class="win-subtitle">
-        Real-time Cloudflare Edge (<code>request.cf</code>) visitor locations, sessions, device split & viral referral tags
+        Real-time Cloudflare Edge (<code>request.cf</code>) visitor locations, sessions, device split, referrals & checkout revenue
       </div>
 
       <!-- Admin Auth Gate -->
@@ -992,22 +1015,26 @@ Player          Three.js UI       Rust WASM         Cloudflare D1
 
       <!-- Admin Dashboard Content (Shown once authenticated) -->
       <div id="admin-dashboard-content" class="hidden">
-        <div class="summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="summary-grid" style="grid-template-columns: repeat(5, 1fr);">
           <div class="summary-box">
-            <span class="metric-label">Unique Visitors</span>
+            <span class="metric-label">Unique</span>
             <span id="adm-unique" class="metric-val highlight">0</span>
           </div>
           <div class="summary-box">
-            <span class="metric-label">Pageviews</span>
+            <span class="metric-label">Views</span>
             <span id="adm-views" class="metric-val">0</span>
           </div>
           <div class="summary-box">
-            <span class="metric-label">Plays / Wins</span>
+            <span class="metric-label">Plays/Wins</span>
             <span id="adm-plays" class="metric-val">0 / 0</span>
           </div>
           <div class="summary-box">
-            <span class="metric-label">Mobile / Desk</span>
+            <span class="metric-label">Mob/Desk</span>
             <span id="adm-devices" class="metric-val">0 / 0</span>
+          </div>
+          <div class="summary-box">
+            <span class="metric-label">Revenue</span>
+            <span id="adm-revenue" class="metric-val highlight">$0.00</span>
           </div>
         </div>
 

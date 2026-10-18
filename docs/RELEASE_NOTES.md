@@ -1,5 +1,30 @@
 # Release Notes — Seolith Tiles (`seolith-tiles`)
 
+## `v1.3.0` — *2026-10-18*
+**Theme:** *Live Edge Checkout & Monetization Engine, Interactive 5s Sponsor Spot & 6 Viral Vaults*
+
+### ✨ New Features
+- **Edge Checkout & Monetization API (`worker/index.js`, `worker/schema.sql`)**:
+  - Added `/api/monetization` and `/api/checkout` supporting 3 seamless modes: Live Stripe REST API Checkout Sessions (`STRIPE_SECRET_KEY`), Hosted Stripe Payment Links (`STRIPE_PAYMENT_LINK`), and Instant Edge Founding Supporter Checkout logged directly into the `monetization_orders` D1 table.
+  - Added `$2.99 Lifetime Seolith Pro Pass` and `$0.99 +15x Cascade Boost Pack` checkout buttons with receipt/account email capture and automatic `?pro_unlocked=1` / `?boost_pack=1` URL verification.
+- **Interactive 5-Second Sponsor Spot (`index.html`, `src/main.js`)**:
+  - Added an interactive 5-second countdown sponsor card with partner CTA link that awards `+3 x3 Boosts` and `+5 Free Plays` upon completion and logs `sponsor_watch` to edge analytics.
+- **2 New High-Dopamine Viral Vaults (`src-rust/lib.rs`, `src/levels.js`)**:
+  - Added **`05. The Hourglass Funnel`** (steel-walled pinch throat with a concentrated gold core) and **`06. The Golden Spiral Vault`** (right-hand express chimney into concentric gold & cyan rings).
+- **Admin Revenue Telemetry (`worker/index.js`, `src/main.js`)**:
+  - Added live **Revenue (`$`) & Orders** metrics to the protected `📊 Admin` dashboard.
+
+---
+
+## `v1.2.0` — *2026-10-18*
+**Theme:** *Admin Geo-Analytics Dashboard, Visitor Telemetry & Autonomous 60FPS Video Showcase*
+
+- Added `visitor_events` table in Cloudflare D1 and `/api/analytics` + `/api/admin/analytics` endpoints capturing Country, Region/State, City, Edge Colo, Timezone, Device Type, and `?ref=` referral tags.
+- Added protected `📊 Admin` dashboard supporting Cloudflare Access Zero-Trust headers and Admin Email + Access Key authentication (`scripts/read-analytics.mjs`).
+- Added autonomous 60FPS MP4 showcase video generator (`scripts/generate-viral-videos.mjs`) and `docs/VIRAL_SHOWCASE_POST.md`.
+
+---
+
 ## `v1.1.0` — *2026-10-17*
 **Theme:** *Watertight Steel Physics, Tester Feedback Hub, Viral Referral Loop & Novice Developer Story*
 

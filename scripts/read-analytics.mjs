@@ -10,6 +10,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Automatically load git-ignored .env.admin.local if present
+const localEnvPath = path.join(process.cwd(), '.env.admin.local');
+if (fs.existsSync(localEnvPath)) {
+  const lines = fs.readFileSync(localEnvPath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.+)\s*$/);
+    if (m && !process.env[m[1]]) {
+      process.env[m[1]] = m[2].trim();
+    }
+  }
+}
+
 const API_URL =
   process.env.SEOLITH_ADMIN_ANALYTICS_URL ||
   'https://seolith-tiles.seolith-com.workers.dev/api/admin/analytics';
@@ -36,8 +48,10 @@ async function syncAdminAnalytics() {
 
   const data = await res.json();
   const s = data.summary || {};
+  const rev = data.revenue || {};
   const byLoc = data.byLocation || [];
   const recent = data.recentVisitors || [];
+  const revenueUsd = ((Number(rev.totalRevenueCents || 0)) / 100).toFixed(2);
 
   const lines = [
     `# Admin Geo-Analytics & Visitor Telemetry Report`,
@@ -48,6 +62,7 @@ async function syncAdminAnalytics() {
     `- **Total Pageviews**: **${s.pageviews || 0}**`,
     `- **Plays Started / Wins**: **${s.playsStarted || 0}** / **${s.totalWins || 0}**`,
     `- **Device Split (Mobile / Desktop)**: **${s.mobileEvents || 0}** / **${s.desktopEvents || 0}**`,
+    `- **Monetization Orders / Revenue**: **${rev.totalOrders || 0} orders** (**$${revenueUsd} USD**)`,
     ``,
     `## 🌍 Top Visitor Locations (Country • Region • City)`,
     ``,

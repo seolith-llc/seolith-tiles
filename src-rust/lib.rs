@@ -940,8 +940,8 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 }
             }
 
-            // LEVEL 3: "Seolith Citadel"
-            _ => {
+            // LEVEL 3: "04. Seolith Citadel"
+            3 => {
                 let mid_c = w / 2;
                 for c in (mid_c - 1)..=(mid_c + 1) {
                     set_tile(&mut STATE.tiles, c, 0, TILE_EMPTY);
@@ -968,6 +968,70 @@ pub extern "C" fn build_preset_level(level_id: u32, grid_w: usize, grid_h: usize
                 for c in (mid_c - 3)..=(mid_c + 3) {
                     set_tile(&mut STATE.tiles, c, top_r + 1, TILE_BRICK_GOLD);
                     set_tile(&mut STATE.tiles, c, top_r + 2, TILE_BRICK_GOLD);
+                }
+            }
+
+            // LEVEL 4: "05. The Hourglass Funnel"
+            4 => {
+                let mid_c = w as isize / 2;
+                let mid_r = h as isize / 2;
+                // Carve bottom entry throat
+                for c in (mid_c - 2)..=(mid_c + 2) {
+                    set_tile(&mut STATE.tiles, c as usize, 0, TILE_EMPTY);
+                }
+                for r in 1..(h - 1) {
+                    let dr = (r as isize - mid_r).abs();
+                    let half_span = (3 + (dr * 4) / 7).clamp(3, (w as isize / 2) - 3);
+                    for c in 1..(w - 1) {
+                        let dc = (c as isize - mid_c).abs();
+                        if dc == half_span || dc == half_span + 1 {
+                            if r < h - 8 && r > 4 {
+                                set_tile(&mut STATE.tiles, c, r, TILE_WALL_STEEL);
+                            }
+                        } else if dc < half_span {
+                            if r < 10 && dc <= 1 {
+                                set_tile(&mut STATE.tiles, c, r, TILE_EMPTY);
+                            } else if dr <= 3 && dc <= 2 {
+                                set_tile(&mut STATE.tiles, c, r, TILE_BRICK_GOLD);
+                            } else if (r + c) % 7 == 0 {
+                                set_tile(&mut STATE.tiles, c, r, TILE_BRICK_CYAN);
+                            }
+                        } else if (r * 3 + c) % 15 == 0 {
+                            set_tile(&mut STATE.tiles, c, r, TILE_BRICK_GOLD);
+                        }
+                    }
+                }
+            }
+
+            // LEVEL 5+: "06. The Golden Spiral Vault"
+            _ => {
+                let mid_c = w as isize / 2;
+                let mid_r = h as isize / 2;
+                let right_entry = (w - 4) as usize;
+                // Bottom-right vertical launch chimney
+                for c in (right_entry - 1)..=right_entry {
+                    set_tile(&mut STATE.tiles, c, 0, TILE_EMPTY);
+                }
+                for r in 1..(h - 5) {
+                    set_tile(&mut STATE.tiles, right_entry - 1, r, TILE_EMPTY);
+                    set_tile(&mut STATE.tiles, right_entry, r, TILE_EMPTY);
+                    set_tile(&mut STATE.tiles, right_entry - 2, r, TILE_WALL_STEEL);
+                    set_tile(&mut STATE.tiles, right_entry - 3, r, TILE_WALL_STEEL);
+                }
+                // Concentric spiral rings with gold veins
+                for r in 3..(h - 4) {
+                    for c in 3..(right_entry - 4) {
+                        let dc = (c as isize - (mid_c - 2)).abs();
+                        let dr = (r as isize - mid_r).abs();
+                        let ring = dc.max(dr);
+                        if ring == 3 || ring == 7 {
+                            set_tile(&mut STATE.tiles, c, r, TILE_BRICK_GOLD);
+                        } else if ring == 5 {
+                            set_tile(&mut STATE.tiles, c, r, TILE_BRICK_CYAN);
+                        } else if ring <= 1 {
+                            set_tile(&mut STATE.tiles, c, r, TILE_BRICK_GOLD);
+                        }
+                    }
                 }
             }
         }

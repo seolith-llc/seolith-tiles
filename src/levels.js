@@ -38,6 +38,24 @@ export const LEVEL_PRESETS = [
     description:
       '5,000+ micro-tiles with embedded gold veins. Pierce the central spire to flood the upper vault from the top down!',
   },
+  {
+    id: 4,
+    name: '05. The Hourglass Funnel',
+    inspiration: 'Steel-walled pinch throat with a concentrated gold pinch-point',
+    defaultGrid: 64,
+    recommendedAimDeg: 0,
+    description:
+      'Launch straight up the lower throat into the hourglass pinch core — once the gold waist shatters, 1,600 balls flood both chambers!',
+  },
+  {
+    id: 5,
+    name: '06. The Golden Spiral Vault',
+    inspiration: 'Right-hand express elevator into concentric gold & cyan rings',
+    defaultGrid: 64,
+    recommendedAimDeg: 26,
+    description:
+      'Send your shot up the right-hand express chimney to drop into concentric rings of gold multiplier bricks!',
+  },
 ];
 
 export const VISUAL_THEMES = {
