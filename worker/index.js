@@ -138,8 +138,8 @@ function isAuthorizedAdmin(request, env) {
     ''
   ).trim();
 
-  const expectedKey = env.ADMIN_ACCESS_KEY || DEFAULT_ADMIN_KEY;
-  if (allowedEmails.includes(reqEmail) && reqKey === expectedKey) {
+  const expectedKey = (env.ADMIN_ACCESS_KEY || DEFAULT_ADMIN_KEY).trim();
+  if (expectedKey.length > 0 && allowedEmails.includes(reqEmail) && reqKey === expectedKey) {
     return { authorized: true, adminEmail: reqEmail, method: 'admin-key' };
   }
 
