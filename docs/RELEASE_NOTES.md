@@ -1,5 +1,15 @@
 # Release Notes — Seolith Tiles (`seolith-tiles`)
 
+## `v1.5.0` — *2026-10-18*
+**Theme:** *Competitive Daily Challenge Hub, Run Telemetry Collection, Tester QA Approval & Shareable Daily Links*
+
+- **Deterministic Daily Challenge (`worker/index.js`, `src/main.js`, `index.html`)**: Added `/api/daily-challenge` and the **`🎯 Daily`** header modal with deterministic daily seed (`FNV-1a`), featured vault, grid density, Par Clear Time, and Target Score.
+- **Detailed Competitive Telemetry (`daily_challenge_runs`)**: Collects Clear Time (`ms`), Score, Peak Balls, Aim Launch Angle (`deg`), Boosts Used, Par Beat status, Device Type, and Country/City for every Daily Challenge run.
+- **Tester QA Sign-Off & Certification (`daily_challenge_approvals`, `/api/daily-challenge/approve`)**: Testers can approve or flag tuning on the Daily Challenge with Difficulty (`1-5`) and Fun (`1-5`) ratings, turning on the **`✅ QA CERTIFIED BY TESTERS`** badge and syncing to `docs/DAILY_CHALLENGE_REPORT.md` via `npm run daily:certify`.
+- **1-Click Shareable Daily Challenge (`/?daily=1&ref=...`)**: Share today's exact seed and par target to X, WhatsApp, or Clipboard to earn `+3 ⚡ x3 Boosts`.
+
+---
+
 ## `v1.4.0` — *2026-10-18*
 **Theme:** *Published Website Engineering & Monetization Blog (`/blog`) + Multi-Platform Syndication (`Dev.to`, `Medium`, `Blogger/Blogspot`)*
 

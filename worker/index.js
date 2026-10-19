@@ -4,7 +4,7 @@
 // + Visitor Geo-Analytics & Admin Dashboard API (/api/analytics, /api/admin/analytics)
 // + Monetization & Stripe Checkout / Payment Link + Sponsor Vault Engine (/api/checkout, /api/verify-checkout, /api/monetization)
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 
 const DEFAULT_ADMIN_EMAILS = [
   'seolith.com@gmail.com',
@@ -50,6 +50,63 @@ function getTimeKeys(date = new Date()) {
   };
 }
 
+const DAILY_VAULT_NAMES = [
+  '01. The Diagonal Chimney',
+  '02. The Center Bent Pipe',
+  '03. Twin Helix Reactor',
+  '04. Seolith Citadel',
+  '05. The Hourglass Funnel',
+  '06. The Golden Spiral Vault',
+];
+
+const DAILY_MODIFIERS = [
+  {
+    code: 'SPEED_BLITZ',
+    title: '⚡ Speed Blitz Cascade',
+    rule: 'Beat the Par Clear Time using the deterministic daily seed to earn the 3-Star Crown + 3 Bonus Boosts!',
+  },
+  {
+    code: 'PRECISION_CHIMNEY',
+    title: '🎯 Precision Threading',
+    rule: 'Thread the primary shaft on your first launch and trigger a 500+ ball cascade under Par Time!',
+  },
+  {
+    code: 'GOLD_RUSH',
+    title: '💎 Gold Vein Rush',
+    rule: 'Detonate the inner gold multiplier chambers to exceed the Target Score and claim #1 on the Daily Board!',
+  },
+];
+
+function computeDailyChallengeConfig(dayKey) {
+  let hash = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < dayKey.length; i++) {
+    hash ^= dayKey.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  const levelId = hash % 6;
+  const gridOptions = [56, 64, 64, 72];
+  const gridSize = gridOptions[(hash >>> 4) % gridOptions.length];
+  const mod = DAILY_MODIFIERS[(hash >>> 8) % DAILY_MODIFIERS.length];
+  const targetTimeMs = 38000 + ((hash >>> 12) % 14) * 1000; // 38.0s - 51.0s
+  const targetScore = 52000 + ((hash >>> 16) % 25) * 1000;
+  const targetPeakBalls = 600 + ((hash >>> 20) % 7) * 100;
+
+  return {
+    dayKey,
+    seed: hash >>> 0,
+    levelId,
+    levelName: DAILY_VAULT_NAMES[levelId] || DAILY_VAULT_NAMES[0],
+    gridSize,
+    modifierCode: mod.code,
+    title: `${dayKey} • ${mod.title}`,
+    ruleText: mod.rule,
+    targetTimeMs,
+    targetScore,
+    targetPeakBalls,
+    rewardBoosts: 3,
+  };
+}
+
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'SAMEORIGIN',
@@ -67,7 +124,7 @@ async function ensureSchema(db) {
           tester_name TEXT NOT NULL DEFAULT 'Anonymous',
           category TEXT NOT NULL DEFAULT 'bug',
           severity TEXT NOT NULL DEFAULT 'normal',
-          version TEXT NOT NULL DEFAULT '1.3.0',
+          version TEXT NOT NULL DEFAULT '1.5.0',
           level_id INTEGER NOT NULL DEFAULT 0,
           message TEXT NOT NULL,
           device_info TEXT NOT NULL DEFAULT '',
@@ -116,6 +173,48 @@ async function ensureSchema(db) {
           provider TEXT NOT NULL DEFAULT 'stripe_or_edge',
           stripe_session_id TEXT NOT NULL DEFAULT '',
           unlock_token TEXT NOT NULL DEFAULT '',
+          country TEXT NOT NULL DEFAULT 'GL',
+          region TEXT NOT NULL DEFAULT 'Global',
+          created_at TEXT NOT NULL
+        )`
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS daily_challenge_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          day_key TEXT NOT NULL,
+          seed INTEGER NOT NULL,
+          level_id INTEGER NOT NULL,
+          player_name TEXT NOT NULL DEFAULT 'Player',
+          score INTEGER NOT NULL,
+          elapsed_ms INTEGER NOT NULL,
+          peak_balls INTEGER NOT NULL DEFAULT 1,
+          beat_target INTEGER NOT NULL DEFAULT 0,
+          aim_deg REAL NOT NULL DEFAULT 0,
+          boosts_used INTEGER NOT NULL DEFAULT 0,
+          device_type TEXT NOT NULL DEFAULT 'desktop',
+          country TEXT NOT NULL DEFAULT 'GL',
+          region TEXT NOT NULL DEFAULT 'Global',
+          city TEXT NOT NULL DEFAULT '',
+          proof INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL
+        )`
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS daily_challenge_approvals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          day_key TEXT NOT NULL,
+          seed INTEGER NOT NULL,
+          tester_name TEXT NOT NULL DEFAULT 'Tester',
+          verdict TEXT NOT NULL DEFAULT 'approved',
+          difficulty_rating INTEGER NOT NULL DEFAULT 5,
+          fun_rating INTEGER NOT NULL DEFAULT 5,
+          comment TEXT NOT NULL DEFAULT '',
           country TEXT NOT NULL DEFAULT 'GL',
           region TEXT NOT NULL DEFAULT 'Global',
           created_at TEXT NOT NULL
@@ -766,6 +865,233 @@ export default {
             { status: 400, headers: SECURITY_HEADERS }
           );
         }
+      }
+    }
+
+    // 8. Daily Challenge & Tester Approval Endpoints (/api/daily-challenge & /api/daily-challenge/approve)
+    if (url.pathname === '/api/daily-challenge') {
+      await ensureSchema(env.DB);
+      const keys = getTimeKeys(new Date());
+      const requestedDay = url.searchParams.get('day') || keys.dayKey;
+      const challenge = computeDailyChallengeConfig(requestedDay);
+
+      if (request.method === 'GET') {
+        let entries = [];
+        let approvals = [];
+        let stats = {
+          totalRuns: 0,
+          targetBeats: 0,
+          approvedCount: 0,
+          needsTuningCount: 0,
+          avgDifficulty: 5.0,
+          avgFun: 5.0,
+          qaCertified: false,
+        };
+
+        if (env.DB) {
+          try {
+            const { results: runRows } = await env.DB.prepare(
+              `SELECT id, player_name AS playerName, score, elapsed_ms AS elapsedMs, peak_balls AS peakBalls,
+                      beat_target AS beatTarget, aim_deg AS aimDeg, boosts_used AS boostsUsed,
+                      device_type AS deviceType, country, region, city, created_at AS createdAt
+               FROM daily_challenge_runs
+               WHERE day_key = ?1
+               ORDER BY elapsed_ms ASC, score DESC
+               LIMIT 25`
+            )
+              .bind(challenge.dayKey)
+              .all();
+            entries = runRows || [];
+
+            const { results: appRows } = await env.DB.prepare(
+              `SELECT id, tester_name AS testerName, verdict, difficulty_rating AS difficultyRating,
+                      fun_rating AS funRating, comment, country, region, created_at AS createdAt
+               FROM daily_challenge_approvals
+               WHERE day_key = ?1
+               ORDER BY created_at DESC
+               LIMIT 20`
+            )
+              .bind(challenge.dayKey)
+              .all();
+            approvals = appRows || [];
+
+            const approvedCount = approvals.filter((a) => a.verdict === 'approved').length;
+            const needsTuningCount = approvals.filter((a) => a.verdict !== 'approved').length;
+            const avgDifficulty = approvals.length
+              ? Number(
+                  (
+                    approvals.reduce((acc, a) => acc + Number(a.difficultyRating || 5), 0) /
+                    approvals.length
+                  ).toFixed(1)
+                )
+              : 5.0;
+            const avgFun = approvals.length
+              ? Number(
+                  (
+                    approvals.reduce((acc, a) => acc + Number(a.funRating || 5), 0) /
+                    approvals.length
+                  ).toFixed(1)
+                )
+              : 5.0;
+
+            stats = {
+              totalRuns: entries.length,
+              targetBeats: entries.filter((e) => Number(e.beatTarget) === 1).length,
+              approvedCount,
+              needsTuningCount,
+              avgDifficulty,
+              avgFun,
+              qaCertified: approvedCount >= 1 && approvedCount >= needsTuningCount,
+            };
+          } catch (_) {}
+        }
+
+        return Response.json(
+          {
+            ok: true,
+            geo,
+            challenge,
+            stats,
+            entries,
+            approvals,
+          },
+          { headers: SECURITY_HEADERS }
+        );
+      }
+
+      if (request.method === 'POST') {
+        try {
+          const body = await request.json();
+          const playerName =
+            String(body.playerName || 'Player')
+              .replace(/[^\w\-\s.]/g, '')
+              .trim()
+              .slice(0, 20) || 'Player';
+          const score = Math.max(0, Math.min(2_000_000, Math.round(Number(body.score) || 0)));
+          const elapsedMs = Math.max(
+            3000,
+            Math.min(3_600_000, Math.round(Number(body.elapsedMs) || 60000))
+          );
+          const peakBalls = Math.max(1, Math.min(1600, Math.round(Number(body.peakBalls) || 1)));
+          const aimDeg = Number(Number(body.aimDeg || 0).toFixed(1));
+          const boostsUsed = Math.max(0, Math.min(99, Math.round(Number(body.boostsUsed) || 0)));
+          const proof = (Number(body.proof) || 0) >>> 0;
+          const ua = request.headers.get('user-agent') || '';
+          const deviceType = /Mobi|Android|iPhone|iPad/i.test(ua) ? 'mobile' : 'desktop';
+
+          const expected = computeExpectedProof(challenge.levelId, score, elapsedMs, peakBalls);
+          if (proof !== expected) {
+            return Response.json(
+              { ok: false, error: 'Invalid daily challenge run proof signature' },
+              { status: 400, headers: SECURITY_HEADERS }
+            );
+          }
+
+          const beatTarget =
+            elapsedMs <= challenge.targetTimeMs || score >= challenge.targetScore ? 1 : 0;
+
+          if (env.DB) {
+            await env.DB.prepare(
+              `INSERT INTO daily_challenge_runs (
+                day_key, seed, level_id, player_name, score, elapsed_ms, peak_balls,
+                beat_target, aim_deg, boosts_used, device_type, country, region, city, proof, created_at
+              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`
+            )
+              .bind(
+                challenge.dayKey,
+                challenge.seed,
+                challenge.levelId,
+                playerName,
+                score,
+                elapsedMs,
+                peakBalls,
+                beatTarget,
+                aimDeg,
+                boostsUsed,
+                deviceType,
+                geo.country,
+                geo.region,
+                geo.city,
+                proof,
+                new Date().toISOString()
+              )
+              .run();
+          }
+
+          return Response.json(
+            {
+              ok: true,
+              dayKey: challenge.dayKey,
+              beatTarget: Boolean(beatTarget),
+              rewardBoosts: beatTarget ? challenge.rewardBoosts : 1,
+            },
+            { headers: SECURITY_HEADERS }
+          );
+        } catch (err) {
+          return Response.json(
+            { ok: false, error: 'Invalid daily challenge run payload' },
+            { status: 400, headers: SECURITY_HEADERS }
+          );
+        }
+      }
+    }
+
+    if (url.pathname === '/api/daily-challenge/approve' && request.method === 'POST') {
+      await ensureSchema(env.DB);
+      const keys = getTimeKeys(new Date());
+      const challenge = computeDailyChallengeConfig(keys.dayKey);
+      try {
+        const body = await request.json();
+        const testerName =
+          String(body.testerName || 'Tester')
+            .replace(/[^\w\-\s.@]/g, '')
+            .trim()
+            .slice(0, 28) || 'Tester';
+        const verdict = body.verdict === 'needs_tuning' ? 'needs_tuning' : 'approved';
+        const difficultyRating = Math.max(1, Math.min(5, Math.round(Number(body.difficultyRating) || 5)));
+        const funRating = Math.max(1, Math.min(5, Math.round(Number(body.funRating) || 5)));
+        const comment = String(body.comment || '')
+          .trim()
+          .slice(0, 500);
+
+        if (env.DB) {
+          await env.DB.prepare(
+            `INSERT INTO daily_challenge_approvals (
+              day_key, seed, tester_name, verdict, difficulty_rating, fun_rating, comment, country, region, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
+          )
+            .bind(
+              challenge.dayKey,
+              challenge.seed,
+              testerName,
+              verdict,
+              difficultyRating,
+              funRating,
+              comment,
+              geo.country,
+              geo.region,
+              new Date().toISOString()
+            )
+            .run();
+        }
+
+        return Response.json(
+          {
+            ok: true,
+            dayKey: challenge.dayKey,
+            verdict,
+            message:
+              verdict === 'approved'
+                ? '✅ Daily Challenge approved & certified!'
+                : '🔧 Tuning feedback recorded for Daily Challenge!',
+          },
+          { headers: SECURITY_HEADERS }
+        );
+      } catch (err) {
+        return Response.json(
+          { ok: false, error: 'Invalid tester approval payload' },
+          { status: 400, headers: SECURITY_HEADERS }
+        );
       }
     }
 

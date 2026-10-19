@@ -87,3 +87,42 @@ CREATE TABLE IF NOT EXISTS monetization_orders (
 
 CREATE INDEX IF NOT EXISTS idx_orders_created ON monetization_orders(created_at DESC);
 
+CREATE TABLE IF NOT EXISTS daily_challenge_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_key TEXT NOT NULL,
+  seed INTEGER NOT NULL,
+  level_id INTEGER NOT NULL,
+  player_name TEXT NOT NULL DEFAULT 'Player',
+  score INTEGER NOT NULL,
+  elapsed_ms INTEGER NOT NULL,
+  peak_balls INTEGER NOT NULL DEFAULT 1,
+  beat_target INTEGER NOT NULL DEFAULT 0,
+  aim_deg REAL NOT NULL DEFAULT 0,
+  boosts_used INTEGER NOT NULL DEFAULT 0,
+  device_type TEXT NOT NULL DEFAULT 'desktop',
+  country TEXT NOT NULL DEFAULT 'GL',
+  region TEXT NOT NULL DEFAULT 'Global',
+  city TEXT NOT NULL DEFAULT '',
+  proof INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_runs_day ON daily_challenge_runs(day_key, elapsed_ms ASC, score DESC);
+
+CREATE TABLE IF NOT EXISTS daily_challenge_approvals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day_key TEXT NOT NULL,
+  seed INTEGER NOT NULL,
+  tester_name TEXT NOT NULL DEFAULT 'Tester',
+  verdict TEXT NOT NULL DEFAULT 'approved',
+  difficulty_rating INTEGER NOT NULL DEFAULT 5,
+  fun_rating INTEGER NOT NULL DEFAULT 5,
+  comment TEXT NOT NULL DEFAULT '',
+  country TEXT NOT NULL DEFAULT 'GL',
+  region TEXT NOT NULL DEFAULT 'Global',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_approvals_day ON daily_challenge_approvals(day_key, created_at DESC);
+
+

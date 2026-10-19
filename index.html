@@ -591,13 +591,14 @@
           <div>
             <div class="brand-title">
               Seolith Tiles
-              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.4.0</span>
+              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.5.0</span>
             </div>
             <div id="geo-badge" style="font-size: 10px; color: var(--muted);">📍 Global Edge • Play #1</div>
           </div>
         </div>
 
         <div class="hud-actions">
+          <button id="btn-daily-challenge" class="icon-btn gold-btn" title="Play Today's Competitive Daily Challenge & Tester QA">🎯 Daily</button>
           <a href="/blog" target="_blank" rel="noopener" class="icon-btn" style="text-decoration:none;" title="Read Engineering & Monetization Blog Post">📖 Blog</a>
           <button id="btn-feedback" class="icon-btn" title="Tester Feedback & Bug Reports">💬 Feedback</button>
           <button id="btn-share-top" class="icon-btn" title="Share Viral Challenge Link (+3 Free Boosts!)">📤 Share</button>
@@ -1078,6 +1079,109 @@ Player          Three.js UI       Rust WASM         Cloudflare D1
 
       <div class="modal-btn-row">
         <button id="btn-close-admin" class="icon-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Competitive Daily Challenge & Tester QA Approval Modal -->
+  <div id="daily-modal" class="overlay-modal hidden">
+    <div class="modal-card" style="max-width:540px;">
+      <div class="win-title">
+        🎯 <span id="dc-title">Daily Challenge</span>
+      </div>
+      <div id="dc-subtitle" class="win-subtitle">
+        Deterministic Seed • Competitive Daily Standings • Tester QA Certification
+      </div>
+
+      <div id="dc-qa-badge" style="display:inline-block;background:rgba(163,230,53,0.14);border:1px solid rgba(163,230,53,0.4);color:#a3e635;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;margin-bottom:10px;">
+        ✅ QA CERTIFIED BY TESTERS
+      </div>
+
+      <div class="summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="summary-box">
+          <span class="metric-label">Vault / Grid</span>
+          <span id="dc-vault" class="metric-val" style="font-size:11px;">Vault #1</span>
+        </div>
+        <div class="summary-box">
+          <span class="metric-label">Par Time</span>
+          <span id="dc-target-time" class="metric-val highlight">45.0s</span>
+        </div>
+        <div class="summary-box">
+          <span class="metric-label">Target Score</span>
+          <span id="dc-target-score" class="metric-val">60,000</span>
+        </div>
+        <div class="summary-box">
+          <span class="metric-label">Daily Seed</span>
+          <span id="dc-seed" class="metric-val" style="font-size:11px;color:var(--cyan);">#000000</span>
+        </div>
+      </div>
+
+      <div id="dc-rule-box" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:12px;color:#e2e8f0;margin-bottom:10px;text-align:left;">
+        Beat the Par Clear Time using today's deterministic seed to earn +3 Bonus Boosts!
+      </div>
+
+      <div class="modal-btn-row" style="margin-bottom:12px;">
+        <button id="btn-launch-daily" class="primary-btn">🚀 Launch Today's Daily Challenge</button>
+        <button id="btn-share-daily-x" class="icon-btn active">𝕏 Share Daily</button>
+        <button id="btn-share-daily-wa" class="icon-btn">💬 WhatsApp</button>
+        <button id="btn-share-daily-copy" class="icon-btn">🔗 Copy Challenge Link</button>
+      </div>
+      <div id="dc-share-status" style="font-size:11px;color:#a3e635;min-height:14px;"></div>
+
+      <!-- Competitive Daily Challenge Standings -->
+      <div style="text-align:left;font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;margin-top:6px;">
+        🏆 Today's Competitive Daily Standings (Collected Telemetry)
+      </div>
+      <div style="max-height:130px;overflow-y:auto;">
+        <table class="lb-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Time</th>
+              <th>Score</th>
+              <th>Balls</th>
+              <th>Aim° / Boosts</th>
+              <th>Loc</th>
+            </tr>
+          </thead>
+          <tbody id="dc-runs-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Tester Approval & QA Certification Panel -->
+      <div style="background:rgba(34,211,238,0.06);border:1px solid rgba(34,211,238,0.28);border-radius:12px;padding:10px;margin-top:12px;text-align:left;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:11px;font-weight:800;color:var(--cyan);text-transform:uppercase;">🧪 Tester QA Sign-Off & Approval</span>
+          <span id="dc-approval-summary" style="font-size:11px;color:var(--muted);">0 Approvals • Avg Fun 5.0/5</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+          <input type="text" id="dc-tester-name" placeholder="Tester Handle" maxlength="24" style="background:rgba(255,255,255,0.08);border:1px solid var(--border);color:#fff;padding:5px 8px;border-radius:6px;font-size:11px;width:115px;" />
+          <select id="dc-verdict" class="ui-select" style="font-size:11px;padding:4px 6px;">
+            <option value="approved">✅ Approve Daily Vault</option>
+            <option value="needs_tuning">🔧 Needs Balance Tuning</option>
+          </select>
+          <select id="dc-diff-rating" class="ui-select" style="font-size:11px;padding:4px 6px;">
+            <option value="5">Diff: 5/5 (Perfect)</option>
+            <option value="4">Diff: 4/5 (Balanced)</option>
+            <option value="3">Diff: 3/5 (Medium)</option>
+          </select>
+          <select id="dc-fun-rating" class="ui-select" style="font-size:11px;padding:4px 6px;">
+            <option value="5">Fun: 5/5 (Addictive!)</option>
+            <option value="4">Fun: 4/5 (Great)</option>
+            <option value="3">Fun: 3/5 (Good)</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="dc-tester-comment" placeholder="Tester notes on today's seed, chimney angle, or par time..." maxlength="240" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid var(--border);color:#fff;padding:5px 8px;border-radius:6px;font-size:11px;" />
+          <button id="btn-submit-daily-approval" class="primary-btn" style="padding:5px 10px;font-size:11px;">Submit QA</button>
+        </div>
+        <div id="dc-approval-msg" style="font-size:11px;color:#a3e635;margin-top:4px;min-height:14px;"></div>
+        <div id="dc-approvals-list" style="max-height:75px;overflow-y:auto;font-size:11px;color:#cbd5e1;margin-top:4px;"></div>
+      </div>
+
+      <div class="modal-btn-row" style="margin-top:10px;">
+        <button id="btn-close-daily" class="icon-btn">Close</button>
       </div>
     </div>
   </div>

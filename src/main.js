@@ -130,6 +130,9 @@ class SeolithTilesGame {
         this.rewardBonusBoosts(15);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
+      if (params.get('daily') === '1') {
+        this._openDailyOnStart = true;
+      }
       const ref = params.get('ref');
       const level = Number(params.get('level') || 0);
       const target = params.get('target');
@@ -137,7 +140,8 @@ class SeolithTilesGame {
       if (ref) {
         this.refTag = ref;
         const banner = document.getElementById('challenge-banner');
-        banner.textContent = `🎯 CHALLENGE FROM @${ref}: Beat ${target || '45.0'}s (${Number(pts || 60000).toLocaleString()} pts) on Vault #${level + 1}!`;
+        const modeLabel = params.get('daily') === '1' ? 'DAILY CHALLENGE' : 'CHALLENGE';
+        banner.textContent = `🎯 ${modeLabel} FROM @${ref}: Beat ${target || '45.0'}s (${Number(pts || 60000).toLocaleString()} pts) on Vault #${level + 1}!`;
         banner.classList.remove('hidden');
         document.getElementById('select-level').value = String(level);
         return Math.max(0, Math.min(LEVEL_PRESETS.length - 1, level));
@@ -154,7 +158,8 @@ class SeolithTilesGame {
         : 'Global Edge';
     const stats = SeolithStorage.getStats();
     const proTag = stats.proUnlocked ? ' • 👑 PRO' : '';
-    badge.textContent = `📍 ${loc} • Play #${(stats.totalPlays || 0) + 1}${proTag}`;
+    const dailyTag = this.isDailyChallengeActive ? ' • 🎯 DAILY' : '';
+    badge.textContent = `📍 ${loc} • Play #${(stats.totalPlays || 0) + 1}${proTag}${dailyTag}`;
   }
 
   updateBoostBadge() {
@@ -205,12 +210,14 @@ class SeolithTilesGame {
     }
   }
 
-  loadLevel(levelId, countAsNewPlay = false) {
+  loadLevel(levelId, countAsNewPlay = false, options = {}) {
     if (countAsNewPlay && SeolithStorage.isMonetizationGateActive()) {
       this.openMonetizationModal();
       return;
     }
 
+    this.isDailyChallengeActive = Boolean(options.isDaily);
+    this.currentRunBoostsUsed = 0;
     this.currentLevelId = Number(levelId);
     const preset = LEVEL_PRESETS[this.currentLevelId] || LEVEL_PRESETS[0];
 
@@ -226,13 +233,12 @@ class SeolithTilesGame {
       this.renderer.applyTheme(this.activeTheme);
     }
 
-    const grid = Number(this.settings.gridSize) || preset.defaultGrid || 64;
-    this.wasm.build_preset_level(
-      this.currentLevelId,
-      grid,
-      grid,
-      (Date.now() & 0xffffffff) >>> 0
-    );
+    const grid = Number(options.gridSize) || Number(this.settings.gridSize) || preset.defaultGrid || 64;
+    const seed =
+      options.seed !== undefined
+        ? Number(options.seed) >>> 0
+        : (Date.now() & 0xffffffff) >>> 0;
+    this.wasm.build_preset_level(this.currentLevelId, grid, grid, seed);
 
     if (this.currentLevelId === 0 || this.currentLevelId === 5) {
       this.wasm.set_paddle_x(0.74);
@@ -252,8 +258,13 @@ class SeolithTilesGame {
     this.lastStatus = 0;
     document.getElementById('result-modal').classList.add('hidden');
     const aimBanner = document.getElementById('aim-banner');
-    aimBanner.textContent = `${preset.name} — Move to aim • Tap / Click or Space to launch!`;
+    aimBanner.textContent = this.isDailyChallengeActive
+      ? `🎯 DAILY CHALLENGE (${this.dailyChallengeData?.challenge?.dayKey || 'Today'}) — Par ${(
+          (this.dailyChallengeData?.challenge?.targetTimeMs || 45000) / 1000
+        ).toFixed(1)}s • Launch now!`
+      : `${preset.name} — Move to aim • Tap / Click or Space to launch!`;
     aimBanner.style.opacity = '1';
+    this.updateGeoBadge(this.leaderboard?.geo);
   }
 
   getSharePayload() {
@@ -395,6 +406,7 @@ class SeolithTilesGame {
         SeolithStorage.saveStats(stats);
         this.updateBoostBadge();
       }
+      this.currentRunBoostsUsed = (this.currentRunBoostsUsed || 0) + 1;
 
       this.audio.ensureContext();
       if (this.wasm.get_status() === 0) {
@@ -657,6 +669,210 @@ class SeolithTilesGame {
     document.getElementById('btn-admin-login').addEventListener('click', () => {
       this.loadAdminAnalytics();
     });
+
+    // Competitive Daily Challenge & Tester QA Modal
+    const dailyModal = document.getElementById('daily-modal');
+    document.getElementById('btn-daily-challenge').addEventListener('click', () => {
+      dailyModal.classList.remove('hidden');
+      this.loadDailyChallengeHub();
+    });
+
+    document.getElementById('btn-close-daily').addEventListener('click', () => {
+      dailyModal.classList.add('hidden');
+    });
+
+    document.getElementById('btn-launch-daily').addEventListener('click', () => {
+      this.startDailyChallengeRun();
+    });
+
+    document.getElementById('btn-share-daily-x').addEventListener('click', () => {
+      this.shareDailyChallenge('x');
+    });
+
+    document.getElementById('btn-share-daily-wa').addEventListener('click', () => {
+      this.shareDailyChallenge('wa');
+    });
+
+    document.getElementById('btn-share-daily-copy').addEventListener('click', () => {
+      this.shareDailyChallenge('copy');
+    });
+
+    document.getElementById('btn-submit-daily-approval').addEventListener('click', () => {
+      this.submitDailyTesterApproval();
+    });
+
+    if (this._openDailyOnStart) {
+      setTimeout(() => {
+        dailyModal.classList.remove('hidden');
+        this.loadDailyChallengeHub();
+      }, 300);
+    }
+  }
+
+  async loadDailyChallengeHub() {
+    const testerInput = document.getElementById('dc-tester-name');
+    if (testerInput && !testerInput.value) {
+      testerInput.value = this.settings.playerName || 'SeolithTester';
+    }
+
+    try {
+      const res = await fetch('/api/daily-challenge');
+      const data = await res.json();
+      if (!data.ok) return;
+      this.dailyChallengeData = data;
+      const c = data.challenge;
+      const st = data.stats || {};
+
+      document.getElementById('dc-title').textContent = c.title;
+      document.getElementById('dc-vault').textContent = `${c.levelName.slice(0, 18)} (${c.gridSize}²)`;
+      document.getElementById('dc-target-time').textContent = `${(c.targetTimeMs / 1000).toFixed(1)}s`;
+      document.getElementById('dc-target-score').textContent = Number(c.targetScore).toLocaleString();
+      document.getElementById('dc-seed').textContent = `#${(c.seed >>> 0).toString(16).toUpperCase()}`;
+      document.getElementById('dc-rule-box').textContent = `${c.ruleText} • ${st.totalRuns || 0} Runs Logged Today (${st.targetBeats || 0} Par Beats)`;
+
+      const qaBadge = document.getElementById('dc-qa-badge');
+      if (st.qaCertified) {
+        qaBadge.style.background = 'rgba(163,230,53,0.14)';
+        qaBadge.style.color = '#a3e635';
+        qaBadge.textContent = `✅ QA CERTIFIED BY TESTERS (${st.approvedCount} Approved • Fun ${st.avgFun}/5)`;
+      } else {
+        qaBadge.style.background = 'rgba(250,204,21,0.14)';
+        qaBadge.style.color = '#facc15';
+        qaBadge.textContent = `🧪 AWAITING TESTER QA SIGN-OFF (${st.approvedCount || 0} Approved)`;
+      }
+
+      document.getElementById('dc-approval-summary').textContent =
+        `${st.approvedCount || 0} Approved • Diff ${st.avgDifficulty || 5.0}/5 • Fun ${st.avgFun || 5.0}/5`;
+
+      const runsTbody = document.getElementById('dc-runs-tbody');
+      const entries = data.entries || [];
+      runsTbody.innerHTML = entries.length
+        ? entries
+            .map((e, i) => {
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
+              const timeSec = ((e.elapsedMs || 45000) / 1000).toFixed(2) + 's';
+              const star = Number(e.beatTarget) === 1 ? '⭐' : '';
+              const loc = e.city ? `${e.city}, ${e.country}` : e.country || 'GL';
+              return `<tr>
+                <td><strong>${medal}</strong></td>
+                <td>${this.escapeHtml(e.playerName)} ${star}</td>
+                <td style="color:#a3e635;font-weight:700;">${timeSec}</td>
+                <td>${Number(e.score || 0).toLocaleString()}</td>
+                <td>${Number(e.peakBalls || 1)}x</td>
+                <td>${Number(e.aimDeg || 0).toFixed(1)}° / ${Number(e.boostsUsed || 0)}⚡</td>
+                <td>${this.escapeHtml(loc)}</td>
+              </tr>`;
+            })
+            .join('')
+        : '<tr><td colspan="7" style="text-align:center;color:#94a3b8;">No Daily Challenge runs yet today — click Launch to set the #1 record!</td></tr>';
+
+      const appList = document.getElementById('dc-approvals-list');
+      const approvals = data.approvals || [];
+      appList.innerHTML = approvals.length
+        ? approvals
+            .map(
+              (a) =>
+                `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <strong>${a.verdict === 'approved' ? '✅' : '🔧'} ${this.escapeHtml(a.testerName)}</strong>
+                  (Diff ${a.difficultyRating}/5, Fun ${a.funRating}/5, ${this.escapeHtml(a.country || 'GL')}):
+                  <em>${this.escapeHtml(a.comment || 'Verified smooth 60FPS gameplay & par target.')}</em>
+                </div>`
+            )
+            .join('')
+        : '<div>No tester sign-offs yet today — test the vault and submit your QA verdict above!</div>';
+    } catch (_) {}
+  }
+
+  startDailyChallengeRun() {
+    const c = this.dailyChallengeData?.challenge || {
+      dayKey: new Date().toISOString().slice(0, 10),
+      seed: 0x20261018,
+      levelId: 0,
+      gridSize: 64,
+      targetTimeMs: 44000,
+    };
+    document.getElementById('daily-modal').classList.add('hidden');
+    document.getElementById('select-level').value = String(c.levelId);
+    this.loadLevel(c.levelId, true, {
+      isDaily: true,
+      seed: c.seed,
+      gridSize: c.gridSize,
+    });
+    this.trackEvent('daily_start', c.levelId);
+  }
+
+  async submitDailyTesterApproval() {
+    const testerName = document.getElementById('dc-tester-name').value.trim() || this.settings.playerName || 'Tester';
+    const verdict = document.getElementById('dc-verdict').value;
+    const difficultyRating = Number(document.getElementById('dc-diff-rating').value || 5);
+    const funRating = Number(document.getElementById('dc-fun-rating').value || 5);
+    const comment = document.getElementById('dc-tester-comment').value.trim();
+    const msgEl = document.getElementById('dc-approval-msg');
+    msgEl.style.color = '#7dd3fc';
+    msgEl.textContent = 'Submitting Tester QA Sign-Off to Cloudflare D1...';
+
+    try {
+      const res = await fetch('/api/daily-challenge/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testerName,
+          verdict,
+          difficultyRating,
+          funRating,
+          comment,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        msgEl.style.color = '#a3e635';
+        msgEl.textContent = `${data.message} (+2 Free ⚡ Boosts credited!)`;
+        document.getElementById('dc-tester-comment').value = '';
+        this.rewardBonusBoosts(2);
+        this.loadDailyChallengeHub();
+      }
+    } catch (_) {
+      msgEl.style.color = '#fca5a5';
+      msgEl.textContent = 'Could not reach edge approval endpoint.';
+    }
+  }
+
+  shareDailyChallenge(channel = 'copy') {
+    const c = this.dailyChallengeData?.challenge || {
+      dayKey: new Date().toISOString().slice(0, 10),
+      seed: 0x20261018,
+      levelId: this.currentLevelId,
+      levelName: LEVEL_PRESETS[this.currentLevelId]?.name || 'Vault #1',
+      targetTimeMs: 44000,
+      targetScore: 60000,
+    };
+    const handle = encodeURIComponent(this.settings.playerName || 'SeolithPlayer');
+    const parSec = (c.targetTimeMs / 1000).toFixed(1);
+    const shareUrl = `${window.location.origin}/?daily=1&ref=${handle}&level=${c.levelId}&target=${parSec}&pts=${c.targetScore}`;
+    const text = `🎯 SEOLITH DAILY CHALLENGE (${c.dayKey}, Seed #${(c.seed >>> 0).toString(16).toUpperCase()}): Can you beat the ${parSec}s Par Time (${Number(c.targetScore).toLocaleString()} pts) on "${c.levelName}"? QA Certified! Play free in your browser:`;
+
+    const statusEl = document.getElementById('dc-share-status');
+    this.rewardBonusBoosts(3);
+    this.trackEvent('daily_share', c.levelId);
+
+    if (channel === 'x') {
+      window.open(
+        `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+      statusEl.textContent = '✅ Opened X Share (+3 Free ⚡ Boosts credited!)';
+    } else if (channel === 'wa') {
+      window.open(
+        `https://api.whatsapp.com/send?text=${encodeURIComponent(text + ' ' + shareUrl)}`,
+        '_blank',
+        'noopener,noreferrer'
+      );
+      statusEl.textContent = '✅ Opened WhatsApp Share (+3 Free ⚡ Boosts credited!)';
+    } else {
+      navigator.clipboard?.writeText(`${text} ${shareUrl}`);
+      statusEl.textContent = '✅ Daily Challenge Link Copied to Clipboard (+3 Free ⚡ Boosts credited!)';
+    }
   }
 
   async startEdgeCheckout(plan = 'pro_pass') {
@@ -1108,6 +1324,34 @@ class SeolithTilesGame {
         peakBalls,
         proof,
       });
+
+      if (this.isDailyChallengeActive) {
+        const aimDeg = Number(((this.aimAngleRad * 180) / Math.PI).toFixed(1));
+        fetch('/api/daily-challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            playerName: this.settings.playerName || 'SeolithPlayer',
+            score,
+            elapsedMs: Math.round(elapsedMs),
+            peakBalls,
+            aimDeg,
+            boostsUsed: this.currentRunBoostsUsed || 0,
+            proof,
+          }),
+        })
+          .then((r) => r.json())
+          .then((res) => {
+            if (res.ok) {
+              const bonus = res.beatTarget ? 3 : 1;
+              this.rewardBonusBoosts(bonus);
+              subtitle.textContent = res.beatTarget
+                ? `🎯 DAILY CHALLENGE PAR BEATEN! (+${bonus} ⚡ Boosts Earned!)`
+                : `🎯 Daily Challenge Cleared! (+${bonus} ⚡ Boost Earned!)`;
+            }
+          })
+          .catch(() => {});
+      }
     } else {
       title.textContent = 'Vault Breach Lost';
       subtitle.textContent = `${this.wasm.get_remaining_bricks().toLocaleString()} micro-tiles remaining`;

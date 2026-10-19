@@ -1,9 +1,20 @@
 // src/releases.js
 // Version Registry & Release Notes History for Seolith Tiles
 
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 
 export const RELEASE_NOTES = [
+  {
+    version: '1.5.0',
+    date: '2026-10-18',
+    title: 'Competitive Daily Challenge Hub, Detailed Telemetry, Tester QA Sign-Off & Viral Daily Share',
+    highlights: [
+      '🎯 Deterministic Daily Challenge (/api/daily-challenge): Generates a daily seed, featured vault, grid density, Par Clear Time, and Target Score so all players worldwide compete on the exact same vault layout.',
+      '📊 Detailed Competitive Run Telemetry: Collects Clear Time, Score, Peak Balls, Aim Angle (deg), Boosts Used, Device Type, and Geo-Location in daily_challenge_runs.',
+      '🧪 Tester QA Approval & Certification (/api/daily-challenge/approve): Testers can rate Difficulty (1-5), Fun (1-5), and certify today\'s Daily Challenge directly inside the 🎯 Daily modal (+2 Free Boosts reward).',
+      '📤 Shareable Daily Challenge Links (?daily=1): 1-click X, WhatsApp, and Clipboard links that open the Daily Challenge Hub automatically for invited friends.',
+    ],
+  },
   {
     version: '1.4.0',
     date: '2026-10-18',
