@@ -1,5 +1,13 @@
 # Release Notes — Seolith Tiles (`seolith-tiles`)
 
+## `v1.4.0` — *2026-10-18*
+**Theme:** *Published Website Engineering & Monetization Blog (`/blog`) + Multi-Platform Syndication (`Dev.to`, `Medium`, `Blogger/Blogspot`)*
+
+- **Live Website Engineering & Monetization Blog (`public/blog/index.html`)**: Published canonical deep-dive article at `https://seolith-tiles.seolith-com.workers.dev/blog` with embedded 60FPS videos, system architecture diagrams, and the 4-tier monetization blueprint, linked via the `📖 Blog` header button.
+- **Multi-Platform Blog Publisher (`scripts/publish-blog.mjs`, `docs/BLOG_POST_GROUND_UP_AND_MONETIZATION.md`)**: Added `npm run blog:publish` supporting direct API syndication and 1-click canonical URL import for **Dev.to**, **Medium**, and **Blogger/Blogspot**.
+
+---
+
 ## `v1.3.0` — *2026-10-18*
 **Theme:** *Live Edge Checkout & Monetization Engine, Interactive 5s Sponsor Spot & 6 Viral Vaults*
 

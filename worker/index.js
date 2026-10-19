@@ -4,7 +4,7 @@
 // + Visitor Geo-Analytics & Admin Dashboard API (/api/analytics, /api/admin/analytics)
 // + Monetization & Stripe Checkout / Payment Link + Sponsor Vault Engine (/api/checkout, /api/verify-checkout, /api/monetization)
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 const DEFAULT_ADMIN_EMAILS = [
   'seolith.com@gmail.com',

@@ -1,9 +1,18 @@
 // src/releases.js
 // Version Registry & Release Notes History for Seolith Tiles
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export const RELEASE_NOTES = [
+  {
+    version: '1.4.0',
+    date: '2026-10-18',
+    title: 'Published Engineering & Monetization Blog (/blog) + Multi-Platform Syndication (Dev.to, Medium & Blogger)',
+    highlights: [
+      '📖 Live Website Engineering & Monetization Blog (/blog): Published full deep-dive article with embedded 60FPS videos, architecture diagrams, and 4-tier monetization breakdown at https://seolith-tiles.seolith-com.workers.dev/blog.',
+      '🚀 Multi-Platform Publisher (npm run blog:publish): Added scripts/publish-blog.mjs and docs/BLOG_POST_GROUND_UP_AND_MONETIZATION.md for Dev.to, Medium, and Blogger/Blogspot.',
+    ],
+  },
   {
     version: '1.3.0',
     date: '2026-10-18',

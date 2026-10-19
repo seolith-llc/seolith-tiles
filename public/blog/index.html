@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How We Built Seolith Tiles From the Ground Up (Rust + WASM + Three.js + Cloudflare Edge) & Our Monetization Blueprint</title>
+  <meta name="description" content="Complete engineering deep dive and monetization blueprint for Seolith Tiles: simulating 6,400 micro-tiles and 1,600 balls at 120 FPS using Rust WebAssembly, Three.js InstancedMesh, WebAudio ASMR, and Cloudflare Workers + D1." />
+  <meta property="og:title" content="How We Built Seolith Tiles From the Ground Up & Our Monetization Blueprint" />
+  <meta property="og:description" content="Simulating 6,400 micro-tiles and 1,600 simultaneous balls at 120 FPS with Rust WASM, Three.js InstancedMesh, and Cloudflare Workers + D1." />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://seolith-tiles.seolith-com.workers.dev/blog" />
+  <style>
+    :root {
+      --bg: #0b0d13;
+      --card: #131722;
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #f26a3d;
+      --gold: #facc15;
+      --cyan: #22d3ee;
+      --green: #a3e635;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #1c2234 0%, var(--bg) 70%);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    header.top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(11, 13, 19, 0.88);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #fff;
+      font-weight: 900;
+      font-size: 16px;
+    }
+    .brand-badge {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #f26a3d, #e11922);
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+    }
+    .nav-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: #fff;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: linear-gradient(135deg, #f26a3d, #e11922);
+      border: none;
+    }
+    .container {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 36px 20px 80px;
+    }
+    .hero-tag {
+      display: inline-block;
+      background: rgba(34, 211, 238, 0.14);
+      color: var(--cyan);
+      border: 1px solid rgba(34, 211, 238, 0.35);
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    h1 {
+      font-size: clamp(28px, 4.5vw, 44px);
+      line-height: 1.18;
+      margin: 14px 0;
+      color: #fff;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    .video-showcase {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 26px 0;
+    }
+    .video-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      text-align: center;
+    }
+    .video-card video {
+      width: 100%;
+      max-height: 360px;
+      border-radius: 10px;
+      background: #000;
+    }
+    h2 {
+      color: var(--gold);
+      font-size: 24px;
+      margin-top: 40px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    h3 {
+      color: var(--cyan);
+      font-size: 19px;
+      margin-top: 26px;
+    }
+    pre {
+      background: #080a0f;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #a5f3fc;
+    }
+    code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 0.92em;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+    }
+    .callout {
+      background: rgba(250, 204, 21, 0.08);
+      border-left: 4px solid var(--gold);
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--gold);
+    }
+    .syndication-bar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+  <header class="top-nav">
+    <a href="/" class="brand">
+      <div class="brand-badge">S</div>
+      <span>Seolith Tiles Engineering Blog</span>
+    </a>
+    <div class="nav-actions">
+      <a href="/" class="btn primary">🎮 Play Seolith Tiles Live</a>
+      <a href="https://github.com/seolith-llc/seolith-tiles" target="_blank" rel="noopener" class="btn">⭐ GitHub Repo</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <span class="hero-tag">Engineering & Monetization Deep Dive • v1.4.0</span>
+    <h1>How We Built Seolith Tiles From the Ground Up (Rust + WASM + Three.js + Cloudflare Edge) — And How It Monetizes</h1>
+    <div class="meta">
+      Published by <strong>Seolith LLC Engineering</strong> • October 18, 2026 • 10 min read •
+      <a href="/" style="color:var(--cyan);">seolith-tiles.seolith-com.workers.dev</a>
+    </div>
+
+    <p>
+      If you have scrolled through X (Twitter), TikTok, or Reels lately, you have almost certainly paused to watch those mesmeric <strong>micro-tile brick breaker</strong> videos (like <code>@iwhale</code>'s viral Diagonal Chimney and Center Bent Pipe posts). A single ball threads a razor-thin steel shaft, ricochets off a 45° corner into a cluster of gold multiplier blocks, and suddenly <strong>1,500+ balls</strong> erupt inside a sealed chamber of <strong>4,096+ tiny bricks</strong> accompanied by rapid-fire ASMR woodblock pops.
+    </p>
+    <p>
+      Most of those viral clips are offline physics renders—you can't actually play them in your browser, customize the screen, or compete on global/local leaderboards. We set out to build <strong><a href="/" style="color:var(--gold);">Seolith Tiles</a></strong>: a lightweight, 60–120 FPS interactive web and mobile game built from scratch using <strong>Rust (compiled to WebAssembly)</strong>, <strong>Three.js (<code>InstancedMesh</code>)</strong>, <strong>Procedural WebAudio</strong>, and <strong>Cloudflare Workers + D1 SQLite</strong>.
+    </p>
+
+    <div class="video-showcase">
+      <div class="video-card">
+        <video src="/videos/seolith-vault-01-diagonal-chimney.mp4" controls loop muted playsinline></video>
+        <div style="font-size:13px;font-weight:700;margin-top:8px;">Vault #1: The Diagonal Chimney (60FPS Capture)</div>
+      </div>
+      <div class="video-card">
+        <video src="/videos/seolith-vault-02-center-bent-pipe.mp4" controls loop muted playsinline></video>
+        <div style="font-size:13px;font-weight:700;margin-top:8px;">Vault #2: The Center Bent Pipe (60FPS Capture)</div>
+      </div>
+    </div>
+
+    <h2>1. The Engineering Challenge: Why Naive JavaScript Breaks at 1,600 Balls</h2>
+    <p>
+      Simulating <strong>1,600 simultaneous high-speed balls</strong> colliding against <strong>6,400 micro-tiles</strong> at 60–120 frames per second requires evaluating millions of potential interactions per second:
+    </p>
+    <ul>
+      <li><strong>The Tunneling ("Bleeding") Problem</strong>: At high velocities, a ball moves further in a single 16.6ms frame than the thickness of a 1-tile steel wall. Without continuous sub-stepping and closest-point Circle-vs-AABB resolution, balls "bleed" right through diagonal steel chutes.</li>
+      <li><strong>The Draw-Call Bottleneck</strong>: Creating 6,400 individual Three.js <code>Mesh</code> objects and 1,600 ball meshes causes 8,000+ WebGL draw calls per frame, dropping mobile browsers to 5 FPS.</li>
+      <li><strong>Garbage Collection Stutters</strong>: Allocating collision vectors or audio nodes in JavaScript every frame triggers GC pauses that ruin the tactile ASMR rhythm.</li>
+    </ul>
+
+    <h2>2. Architecture From the Ground Up (The 4 Pillars)</h2>
+    <pre><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                        PLAYER BROWSER (Mobile / Desktop)                │
+│                                                                         │
+│  ┌──────────────────────┐        Zero-Copy Shared Memory Views          │
+│  │  Three.js Renderer   │◄────── (Uint8Array / Float32Array) ──────┐    │
+│  │  (4 InstancedMeshes) │                                          │    │
+│  └──────────┬───────────┘                                          │    │
+│             │ requestAnimationFrame (60-120Hz)                     ▼    │
+│  ┌──────────┴───────────┐     step_physics(dt)      ┌─────────────────┐ │
+│  │   Main Game Loop     │──────────────────────────►│   Rust WASM     │ │
+│  │   (src/main.js)      │◄──────────────────────────│ Physics Engine  │ │
+│  └────┬─────────┬───────┘   Hits / Score / Status   │ (src-rust/lib)  │ │
+│       │         │                                   └─────────────────┘ │
+│       ▼         ▼                                                       │
+│  ┌─────────┐ ┌──────────────┐      HTTPS JSON       ┌─────────────────┐ │
+│  │WebAudio │ │ LocalStorage │   /api/leaderboard    │ Cloudflare Edge │ │
+│  │ASMR Syn │ │ 2.5s Resume  │   /api/checkout       │  Worker + D1    │ │
+│  └─────────┘ └──────────────┘   /api/analytics      └─────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘</code></pre>
+
+    <h3>Pillar 1: Zero-Copy Rust WebAssembly Physics (<code>src-rust/lib.rs</code>)</h3>
+    <p>
+      We wrote the physics engine in pure <code>#![no_std]</code>-style Rust with zero heap allocations during gameplay. Every entity lives in a fixed, cache-aligned <code>static mut STATE: EngineState</code> struct compiled to a tiny <strong>22 KB <code>seolith_engine.wasm</code> binary</strong>.
+    </p>
+    <ul>
+      <li><strong>O(1) Spatial Grid Lookup</strong>: Instead of checking all 6,400 bricks per ball, we convert the ball's <code>(x, y)</code> coordinate directly into grid indices <code>(col, row)</code> and inspect only the 3×3 neighborhood around the ball.</li>
+      <li><strong>16x Sub-Stepping & Multi-Pass Circle-vs-AABB Solver</strong>: Each frame is subdivided into up to 16 micro-steps so a ball never travels more than <code>22%</code> of a tile width per sub-step. Within each sub-step, we prioritize indestructible <code>TILE_WALL_STEEL</code> blocks first and push the ball out along the exact minimum-penetration vector.</li>
+      <li><strong>Watertight 2-Tile-Thick Diagonal Chutes</strong>: All 45° chimneys are reinforced with 4-connected double steel walls so diagonal corner contacts are 100% airtight.</li>
+    </ul>
+
+    <h3>Pillar 2: 4-Draw-Call Three.js <code>InstancedMesh</code> Renderer (<code>src/renderer.js</code>)</h3>
+    <p>
+      JavaScript never copies arrays back and forth from Rust. Instead, Three.js reads Rust's linear WebAssembly memory directly via typed array views (<code>new Uint8Array(wasmMemory.buffer, get_tiles_ptr(), 6400)</code>) and updates just <strong>4 GPU <code>InstancedMesh</code> buffers</strong>:
+    </p>
+    <ol>
+      <li><code>brickMesh</code> (up to 6,400 micro-tiles with custom colors & 3D depth)</li>
+      <li><code>ballMesh</code> (up to 1,600 active cascade balls)</li>
+      <li><code>capsuleMesh</code> (up to 64 falling power-up pills: <code>x3</code>, <code>+3</code>, <code>&lt;-&gt;</code>, <code>[-]</code>, <code>★</code>)</li>
+      <li><code>particleMesh</code> (up to 1,200 3D shatter particles)</li>
+    </ol>
+
+    <h3>Pillar 3: Zero-Asset Procedural WebAudio ASMR Synthesizer (<code>src/audio.js</code>)</h3>
+    <p>
+      Why does the viral video feel so satisfying? Because the pitch rises as balls climb deeper into the upper vault! Whenever Rust records brick hits in a frame, it exposes <code>get_last_hit_row_norm()</code> (from <code>0.0</code> at the bottom to <code>1.0</code> at the top). Our WebAudio synthesizer maps that row height to a pentatonic marimba/woodblock frequency with micro-jitter and a 118 BPM synthwave bassline—requiring <strong>0 KB of external MP3 files</strong>.
+    </p>
+
+    <h3>Pillar 4: Cloudflare Workers + D1 Edge Backend (<code>worker/index.js</code>)</h3>
+    <p>
+      Every request hits a Cloudflare Worker backed by a serverless SQLite database (<strong>Cloudflare D1</strong>) and automatic <code>request.cf</code> geo-IP metadata:
+    </p>
+    <ul>
+      <li><strong>Time & Location Leaderboards (<code>/api/leaderboard</code>)</strong>: Ranks players by fastest clear time and highest score across <strong>Daily, Weekly, Monthly, and Yearly</strong> windows filtered by <strong>Global, Country, or Region/City</strong>.</li>
+      <li><strong>Protected Admin Geo-Analytics (<code>/api/admin/analytics</code>)</strong>: Tracks visitor countries, regions, cities, Cloudflare Edge colos, device split (Mobile vs. Desktop), and viral <code>?ref=</code> referral tags for authorized admin accounts.</li>
+      <li><strong>Live Tester Feedback Loop (<code>/api/feedback</code>)</strong>: Lets players submit bugs and ideas that sync directly into our repo via <code>npm run feedback:read</code>.</li>
+    </ul>
+
+    <h2>3. How Seolith Tiles Is Monetized (Day-1 + 100-Play Hybrid Funnel)</h2>
+    <p>
+      Casual web games fail to monetize when they slap intrusive banner ads before the player is hooked—or when they wait too long and never offer an upgrade path to high-intent players. We implemented a <strong>4-tier hybrid monetization architecture</strong>:
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Monetization Tier</th>
+          <th>Trigger Point</th>
+          <th>Price / Value Exchange</th>
+          <th>Technical Implementation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Viral Share-to-Boost Loop</strong></td>
+          <td>Day 1 (Every Run)</td>
+          <td><strong>FREE</strong> (1-Click X / WhatsApp / Challenge Link share = <code>+3 ⚡ x3 Boosts</code>)</td>
+          <td>Generates <code>?ref=Handle&amp;level=0&amp;target=42.8</code> challenge URLs that bring new players in at $0 CAC.</td>
+        </tr>
+        <tr>
+          <td><strong>2. Interactive 5-Second Sponsor Spot</strong></td>
+          <td>When out of <code>⚡ x3 Boosts</code> or at the 100-play gate</td>
+          <td><strong>FREE to Player</strong> (5s partner spotlight = <code>+3 Boosts &amp; +5 Plays</code>)</td>
+          <td>Served via <code>GET /api/monetization</code> with a 5-second countdown timer, clickable sponsor CTA, and D1 telemetry (<code>sponsor_watch</code>).</td>
+        </tr>
+        <tr>
+          <td><strong>3. Impulse Micro-Pack (<code>+15x Boosts</code>)</strong></td>
+          <td>Pro Shop Modal (<code>👑 Pro</code> button)</td>
+          <td><strong>$0.99 USD</strong></td>
+          <td>Processed via <code>POST /api/checkout</code> (`boost_pack_15`) and logged to the D1 <code>monetization_orders</code> table.</td>
+        </tr>
+        <tr>
+          <td><strong>4. Lifetime Seolith Pro Pass (100-Play Gate)</strong></td>
+          <td>Anytime via <code>👑 Pro</code> or after <strong>100 Free Plays</strong></td>
+          <td><strong>$2.99 USD Lifetime</strong></td>
+          <td>Unlocks unlimited plays past 100, automatic Gold Safety Floor at launch, <code>∞</code> x3 Boosts, and Verified Pro badge.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>💡 Why the 100-Play Gate + Day-1 Pro Shop Works:</strong><br/>
+      Players who just want a quick 2-minute dopamine break can buy a <strong>$0.99 Boost Pack</strong>, watch a <strong>5-second Sponsor Spot</strong>, or share on X on their very first session. Power players who hit <strong>100 plays</strong> have proven deep retention and convert at high rates to the <strong>$2.99 Lifetime Pro Pass</strong>.
+    </div>
+
+    <h2>4. Try It Live & Explore the Code</h2>
+    <ul>
+      <li>🎮 <strong>Play Seolith Tiles Live on Cloudflare Edge</strong>: <a href="https://seolith-tiles.seolith-com.workers.dev" style="color:var(--gold);">https://seolith-tiles.seolith-com.workers.dev</a></li>
+      <li>💻 <strong>GitHub Repository (MIT)</strong>: <a href="https://github.com/seolith-llc/seolith-tiles" style="color:var(--cyan);">https://github.com/seolith-llc/seolith-tiles</a></li>
+      <li>🎬 <strong>60FPS Autonomous Gameplay Captures</strong>: <a href="/videos/seolith-vault-01-diagonal-chimney.mp4" style="color:var(--green);">Diagonal Chimney MP4</a> • <a href="/videos/seolith-vault-02-center-bent-pipe.mp4" style="color:var(--green);">Center Bent Pipe MP4</a></li>
+    </ul>
+
+    <div class="syndication-bar">
+      <h3 style="margin-top:0;">🚀 Cross-Published & Ready for Dev.to, Medium, and Blogger</h3>
+      <p style="margin-bottom:0;font-size:14px;color:var(--muted);">
+        This canonical engineering post is hosted directly on our Cloudflare Edge at <code>/blog</code> and syndicated via our automated multi-platform publisher (<code>npm run blog:publish</code>) to Dev.to, Medium, and Blogger/Blogspot.
+      </p>
+    </div>
+  </main>
+</body>
+</html>
