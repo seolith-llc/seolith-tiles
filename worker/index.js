@@ -4,7 +4,7 @@
 // + Visitor Geo-Analytics & Admin Dashboard API (/api/analytics, /api/admin/analytics)
 // + Monetization & Stripe Checkout / Payment Link + Sponsor Vault Engine (/api/checkout, /api/verify-checkout, /api/monetization)
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 const DEFAULT_ADMIN_EMAILS = [
   'seolith.com@gmail.com',
@@ -218,6 +218,25 @@ async function ensureSchema(db) {
           country TEXT NOT NULL DEFAULT 'GL',
           region TEXT NOT NULL DEFAULT 'Global',
           created_at TEXT NOT NULL
+        )`
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS reminder_subscriptions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          player_name TEXT NOT NULL DEFAULT 'Player',
+          reminder_time TEXT NOT NULL DEFAULT '19:00',
+          timezone_offset_min INTEGER NOT NULL DEFAULT 0,
+          daily_challenge_alert INTEGER NOT NULL DEFAULT 1,
+          streak_saver_alert INTEGER NOT NULL DEFAULT 1,
+          rank_overtake_alert INTEGER NOT NULL DEFAULT 1,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          country TEXT NOT NULL DEFAULT 'GL',
+          region TEXT NOT NULL DEFAULT 'Global',
+          updated_at TEXT NOT NULL
         )`
       )
       .run();
@@ -1092,6 +1111,85 @@ export default {
           { ok: false, error: 'Invalid tester approval payload' },
           { status: 400, headers: SECURITY_HEADERS }
         );
+      }
+    }
+
+    // 9. PWA Notifications & Daily Reminder Subscriptions Endpoint (/api/reminders)
+    if (url.pathname === '/api/reminders') {
+      await ensureSchema(env.DB);
+      if (request.method === 'GET') {
+        const keys = getTimeKeys(new Date());
+        const challenge = computeDailyChallengeConfig(keys.dayKey);
+        return Response.json(
+          {
+            ok: true,
+            dayKey: challenge.dayKey,
+            notification: {
+              title: `🎯 ${challenge.title}`,
+              body: `Today's vault: ${challenge.levelName} • Beat ${(
+                challenge.targetTimeMs / 1000
+              ).toFixed(1)}s Par Time for +3 Free ⚡ Boosts!`,
+              url: '/?daily=1&ref=EdgeReminder',
+            },
+          },
+          { headers: SECURITY_HEADERS }
+        );
+      }
+
+      if (request.method === 'POST') {
+        try {
+          const body = await request.json();
+          const sessionId = String(body.sessionId || 'anon').slice(0, 64);
+          const playerName =
+            String(body.playerName || 'Player')
+              .replace(/[^\w\-\s.]/g, '')
+              .trim()
+              .slice(0, 24) || 'Player';
+          const reminderTime = String(body.reminderTime || '19:00').slice(0, 8);
+          const timezoneOffsetMin = Math.round(Number(body.timezoneOffsetMin) || 0);
+          const dailyChallengeAlert = body.dailyChallengeAlert === false ? 0 : 1;
+          const streakSaverAlert = body.streakSaverAlert === false ? 0 : 1;
+          const rankOvertakeAlert = body.rankOvertakeAlert === false ? 0 : 1;
+          const enabled = body.enabled === false ? 0 : 1;
+
+          if (env.DB) {
+            await env.DB.prepare(
+              `INSERT INTO reminder_subscriptions (
+                session_id, player_name, reminder_time, timezone_offset_min,
+                daily_challenge_alert, streak_saver_alert, rank_overtake_alert,
+                enabled, country, region, updated_at
+              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
+            )
+              .bind(
+                sessionId,
+                playerName,
+                reminderTime,
+                timezoneOffsetMin,
+                dailyChallengeAlert,
+                streakSaverAlert,
+                rankOvertakeAlert,
+                enabled,
+                geo.country,
+                geo.region,
+                new Date().toISOString()
+              )
+              .run();
+          }
+
+          return Response.json(
+            {
+              ok: true,
+              reminderTime,
+              message: 'Reminder schedule saved to Cloudflare D1!',
+            },
+            { headers: SECURITY_HEADERS }
+          );
+        } catch (err) {
+          return Response.json(
+            { ok: false, error: 'Invalid reminder subscription payload' },
+            { status: 400, headers: SECURITY_HEADERS }
+          );
+        }
       }
     }
 

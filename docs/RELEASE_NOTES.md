@@ -1,5 +1,18 @@
 # Release Notes — Seolith Tiles (`seolith-tiles`)
 
+## `v1.6.0` — *2026-10-19*
+**Theme:** *Standalone Progressive Web App (PWA), Offline WASM Service Worker & Daily Challenge Notification Reminders*
+
+- **Installable Progressive Web App (`public/manifest.webmanifest`, `public/sw.js`, `public/icons/`)**:
+  - Added full Web App Manifest with `standalone` portrait display, custom 192x192 and 512x512 icons, and Home Screen app shortcuts (`🎯 Today's Daily Challenge` and `🏆 Leaderboards`).
+  - Added `public/sw.js` Service Worker with stale-while-revalidate caching for `seolith_engine.wasm`, Three.js bundles, and HTML shell so the game works smoothly offline at 120 FPS.
+  - Added 1-click **📲 Install App to Home Screen / Desktop** inside the **`🔔 Remind`** modal (rewarding `+5 Free ⚡ Boosts`).
+- **Notifications & Custom Daily Reminders (`src/pwa.js`, `worker/index.js` `/api/reminders`)**:
+  - Added Web Notification permission flow, Periodic Background Sync registration, local daily time scheduler (default `19:00`), **🔥 Daily Play Streak** counter, and **⚡ Send Test Notification Now** button.
+  - Added `reminder_subscriptions` D1 table and `/api/reminders` endpoint to persist player reminder schedules.
+
+---
+
 ## `v1.5.0` — *2026-10-18*
 **Theme:** *Competitive Daily Challenge Hub, Run Telemetry Collection, Tester QA Approval & Shareable Daily Links*
 

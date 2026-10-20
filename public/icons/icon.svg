@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141824"/>
+      <stop offset="100%" stop-color="#090a0f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f26a3d"/>
+      <stop offset="100%" stop-color="#e11922"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#eab308"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="28" y="28" width="456" height="456" rx="92" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="8"/>
+  <!-- Micro-tile vault grid pattern -->
+  <g fill="url(#accent)">
+    <rect x="88" y="84" width="68" height="44" rx="8"/>
+    <rect x="172" y="84" width="68" height="44" rx="8"/>
+    <rect x="256" y="84" width="68" height="44" rx="8"/>
+    <rect x="340" y="84" width="84" height="44" rx="8"/>
+    <rect x="88" y="144" width="68" height="44" rx="8"/>
+    <rect x="340" y="144" width="84" height="44" rx="8"/>
+    <rect x="88" y="204" width="68" height="44" rx="8"/>
+  </g>
+  <!-- Gold Trigger Core -->
+  <g fill="url(#gold)">
+    <rect x="172" y="144" width="152" height="44" rx="8"/>
+    <rect x="172" y="204" width="68" height="44" rx="8"/>
+    <rect x="256" y="204" width="68" height="44" rx="8"/>
+  </g>
+  <!-- Cascade Balls -->
+  <circle cx="372" cy="244" r="18" fill="#ffffff"/>
+  <circle cx="312" cy="296" r="16" fill="#22d3ee"/>
+  <circle cx="224" cy="310" r="18" fill="#facc15"/>
+  <circle cx="156" cy="336" r="14" fill="#ffffff"/>
+  <!-- Paddle -->
+  <rect x="136" y="404" width="240" height="34" rx="17" fill="url(#accent)"/>
+</svg>

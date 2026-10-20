@@ -1,0 +1,49 @@
+{
+  "name": "Seolith Tiles — 120FPS Micro-Tile Brick Breaker",
+  "short_name": "Seolith Tiles",
+  "description": "Satisfying 1,600-ball micro-tile brick breaker built with Rust WebAssembly, Three.js, and WebAudio ASMR. Play offline, compete in Daily Challenges, and customize your vault!",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090a0f",
+  "theme_color": "#090a0f",
+  "categories": ["games", "entertainment", "arcade"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "🎯 Today's Daily Challenge",
+      "short_name": "Daily Challenge",
+      "description": "Launch today's deterministic Daily Challenge vault",
+      "url": "/?daily=1&source=pwa_shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "🏆 Global & Local Ranks",
+      "short_name": "Leaderboards",
+      "description": "Check Daily, Weekly, Monthly, and Yearly Toppers",
+      "url": "/?ranks=1&source=pwa_shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

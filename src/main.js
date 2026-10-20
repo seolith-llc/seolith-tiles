@@ -10,6 +10,7 @@ import { SeolithAudio } from './audio.js';
 import { SeolithStorage, MONETIZATION_FREE_PLAYS_LIMIT } from './storage.js';
 import { SeolithRecorder } from './recorder.js';
 import { SeolithLeaderboard } from './leaderboard.js';
+import { SeolithPWA } from './pwa.js';
 
 const VAULT_LEFT = 0.04;
 const VAULT_RIGHT = 0.96;
@@ -23,6 +24,7 @@ class SeolithTilesGame {
     this.stats = SeolithStorage.getStats();
     this.audio = new SeolithAudio();
     this.leaderboard = new SeolithLeaderboard();
+    this.pwa = new SeolithPWA(this);
 
     this.currentLevelId = 0;
     this.aimAngleRad = (LEVEL_PRESETS[0].recommendedAimDeg * Math.PI) / 180;
@@ -108,7 +110,8 @@ class SeolithTilesGame {
     this.checkSavedSnapshot();
     this.updateBoostBadge();
 
-    // 7. Log Visitor Pageview & Fetch Edge Geo-Location in background
+    // 7. Log Visitor Pageview, Initialize PWA & Reminders, & Fetch Edge Geo-Location in background
+    this.pwa.init();
     this.trackEvent('pageview', initialLevel);
     this.leaderboard.fetchGeoAndTop({ levelId: initialLevel }).then((data) => {
       this.updateGeoBadge(data?.geo);
@@ -707,6 +710,60 @@ class SeolithTilesGame {
         this.loadDailyChallengeHub();
       }, 300);
     }
+
+    // PWA Install & Daily Reminders Modal
+    const pwaModal = document.getElementById('pwa-modal');
+    const pwaBtn = document.getElementById('btn-pwa-reminders');
+    if (pwaBtn && pwaModal) {
+      pwaBtn.addEventListener('click', () => {
+        this.pwa.syncModalUI();
+        pwaModal.classList.remove('hidden');
+      });
+    }
+
+    document.getElementById('btn-close-pwa')?.addEventListener('click', () => {
+      pwaModal.classList.add('hidden');
+    });
+
+    document.getElementById('btn-install-pwa-now')?.addEventListener('click', () => {
+      this.pwa.promptInstall();
+    });
+
+    document.getElementById('btn-save-reminders')?.addEventListener('click', async () => {
+      const reminderTime = document.getElementById('pwa-reminder-time')?.value || '19:00';
+      const dailyChallengeAlert = Boolean(document.getElementById('pwa-chk-daily')?.checked);
+      const streakSaverAlert = Boolean(document.getElementById('pwa-chk-streak')?.checked);
+      const rankOvertakeAlert = Boolean(document.getElementById('pwa-chk-rank')?.checked);
+
+      this.pwa.saveConfig({
+        reminderTime,
+        dailyChallengeAlert,
+        streakSaverAlert,
+        rankOvertakeAlert,
+      });
+      await this.pwa.requestNotificationPermission();
+    });
+
+    document.getElementById('btn-test-notification')?.addEventListener('click', async () => {
+      const c = this.dailyChallengeData?.challenge;
+      const title = c
+        ? `🎯 ${c.title}`
+        : '🎯 Seolith Daily Challenge & Streak Reminder!';
+      const body = c
+        ? `Vault: ${c.levelName} • Beat ${(c.targetTimeMs / 1000).toFixed(1)}s Par Time to claim +3 Free ⚡ Boosts!`
+        : 'Your daily micro-tile vault is ready! Tap to launch a 1,600-ball cascade & keep your streak alive!';
+      const sent = await this.pwa.sendNotification({
+        title,
+        body,
+        tag: 'seolith-test-notification',
+        url: '/?daily=1&ref=TestReminder',
+      });
+      const statusEl = document.getElementById('pwa-status-msg');
+      if (statusEl && sent) {
+        statusEl.style.color = '#a3e635';
+        statusEl.textContent = '✅ Live notification dispatched! Check your system notification tray.';
+      }
+    });
   }
 
   async loadDailyChallengeHub() {

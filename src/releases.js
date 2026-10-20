@@ -1,9 +1,18 @@
 // src/releases.js
 // Version Registry & Release Notes History for Seolith Tiles
 
-export const APP_VERSION = '1.5.0';
+export const APP_VERSION = '1.6.0';
 
 export const RELEASE_NOTES = [
+  {
+    version: '1.6.0',
+    date: '2026-10-19',
+    title: 'Standalone PWA Support, Offline WASM Caching & Daily Challenge Notifications / Reminders',
+    highlights: [
+      '📲 Full Progressive Web App (PWA): Added /manifest.webmanifest, /sw.js Service Worker (offline-first WASM & Three.js caching), 192x192 & 512x512 icons, and 1-click Home Screen / Desktop installation (+5 Free ⚡ Boosts).',
+      '🔔 Notifications & Custom Daily Reminders (/api/reminders & src/pwa.js): Players can enable Web Notifications, schedule their local Daily Reminder Time (e.g. 19:00), track their 🔥 Daily Streak, and test live system tray notifications inside the 🔔 Remind modal (+3 Free ⚡ Boosts).',
+    ],
+  },
   {
     version: '1.5.0',
     date: '2026-10-18',

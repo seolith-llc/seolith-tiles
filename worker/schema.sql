@@ -125,4 +125,20 @@ CREATE TABLE IF NOT EXISTS daily_challenge_approvals (
 
 CREATE INDEX IF NOT EXISTS idx_daily_approvals_day ON daily_challenge_approvals(day_key, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS reminder_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  player_name TEXT NOT NULL DEFAULT 'Player',
+  reminder_time TEXT NOT NULL DEFAULT '19:00',
+  timezone_offset_min INTEGER NOT NULL DEFAULT 0,
+  daily_challenge_alert INTEGER NOT NULL DEFAULT 1,
+  streak_saver_alert INTEGER NOT NULL DEFAULT 1,
+  rank_overtake_alert INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  country TEXT NOT NULL DEFAULT 'GL',
+  region TEXT NOT NULL DEFAULT 'Global',
+  updated_at TEXT NOT NULL
+);
+
+
 

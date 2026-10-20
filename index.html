@@ -3,9 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0c0e" />
-  <meta name="description" content="Seolith Tiles v1.1.0 — Satisfying Micro-Tile Brick Breaker built with Rust (WebAssembly) & Three.js. Thread the vault, trigger 1,500x ball cascades, and climb the Global & Local Leaderboards." />
-  <title>SEOLITH TILES v1.1.0 — Satisfying Micro-Tile Brick Breaker (Rust + Three.js)</title>
+  <meta name="theme-color" content="#090a0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Seolith Tiles" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="description" content="Seolith Tiles v1.6.0 — Satisfying 120FPS Micro-Tile Brick Breaker PWA built with Rust (WebAssembly) & Three.js. Play offline, get Daily Challenge reminders, and climb Global & Local Leaderboards." />
+  <title>SEOLITH TILES v1.6.0 — Satisfying Micro-Tile Brick Breaker (Rust + Three.js PWA)</title>
   <style>
     :root {
       --bg-outer: #121316;
@@ -591,7 +597,7 @@
           <div>
             <div class="brand-title">
               Seolith Tiles
-              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.5.0</span>
+              <span id="btn-version-notes" class="version-pill" title="View Release Notes & How It Was Built">v1.6.0</span>
             </div>
             <div id="geo-badge" style="font-size: 10px; color: var(--muted);">📍 Global Edge • Play #1</div>
           </div>
@@ -599,6 +605,7 @@
 
         <div class="hud-actions">
           <button id="btn-daily-challenge" class="icon-btn gold-btn" title="Play Today's Competitive Daily Challenge & Tester QA">🎯 Daily</button>
+          <button id="btn-pwa-reminders" class="icon-btn active" title="Install PWA App & Set Daily Challenge Reminders">🔔 Remind</button>
           <a href="/blog" target="_blank" rel="noopener" class="icon-btn" style="text-decoration:none;" title="Read Engineering & Monetization Blog Post">📖 Blog</a>
           <button id="btn-feedback" class="icon-btn" title="Tester Feedback & Bug Reports">💬 Feedback</button>
           <button id="btn-share-top" class="icon-btn" title="Share Viral Challenge Link (+3 Free Boosts!)">📤 Share</button>
@@ -1182,6 +1189,73 @@ Player          Three.js UI       Rust WASM         Cloudflare D1
 
       <div class="modal-btn-row" style="margin-top:10px;">
         <button id="btn-close-daily" class="icon-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA App Install & Daily Notifications / Reminders Modal -->
+  <div id="pwa-modal" class="overlay-modal hidden">
+    <div class="modal-card" style="max-width:480px;">
+      <div class="win-title">📲 Install App & 🔔 Daily Reminders</div>
+      <div class="win-subtitle">
+        Play offline at 120 FPS as a standalone PWA & never miss a Daily Challenge or Streak!
+      </div>
+
+      <div id="pwa-perm-badge" style="display:inline-block;background:rgba(250,204,21,0.14);border:1px solid rgba(250,204,21,0.4);color:#facc15;font-size:11px;font-weight:800;padding:4px 12px;border-radius:99px;margin-bottom:10px;">
+        🔔 Enable Reminders for +3 Free ⚡ Boosts
+      </div>
+
+      <div class="summary-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom:10px;">
+        <div class="summary-box">
+          <span class="metric-label">Current Daily Streak</span>
+          <span id="pwa-streak-val" class="metric-val highlight">🔥 1 Day</span>
+        </div>
+        <div class="summary-box">
+          <span class="metric-label">Offline WASM Cache</span>
+          <span class="metric-val" style="color:#a3e635;font-size:12px;">⚡ Ready (Service Worker)</span>
+        </div>
+      </div>
+
+      <div id="pwa-install-status" style="font-size:11px;color:#94a3b8;margin-bottom:8px;">
+        📲 Installable via Browser ("Add to Home Screen" / "Install Seolith Tiles")
+      </div>
+
+      <button id="btn-install-pwa-now" class="icon-btn gold-btn" style="width:100%;justify-content:center;padding:8px;margin-bottom:12px;">
+        📲 Install App to Home Screen / Desktop (+5 ⚡ Boosts)
+      </button>
+
+      <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:left;">
+        <div style="font-size:11px;font-weight:800;color:var(--cyan);text-transform:uppercase;margin-bottom:8px;">
+          ⏰ Custom Daily Reminder Schedule
+        </div>
+
+        <div class="form-row" style="padding:5px 0;">
+          <span>Daily Reminder Time (Local)</span>
+          <input type="time" id="pwa-reminder-time" value="19:00" style="background:rgba(255,255,255,0.08);border:1px solid var(--border);color:#fff;padding:5px 8px;border-radius:6px;font-size:12px;" />
+        </div>
+
+        <div class="form-row" style="padding:5px 0;">
+          <span>🎯 Daily Challenge Ready Alert</span>
+          <input type="checkbox" id="pwa-chk-daily" checked />
+        </div>
+
+        <div class="form-row" style="padding:5px 0;">
+          <span>🔥 Daily Streak-Saver Reminder</span>
+          <input type="checkbox" id="pwa-chk-streak" checked />
+        </div>
+
+        <div class="form-row" style="padding:5px 0;border:none;">
+          <span>🏆 Leaderboard Rank Overtake Alert</span>
+          <input type="checkbox" id="pwa-chk-rank" checked />
+        </div>
+      </div>
+
+      <div id="pwa-status-msg" style="font-size:11px;color:#a3e635;min-height:16px;margin:8px 0;"></div>
+
+      <div class="modal-btn-row">
+        <button id="btn-save-reminders" class="primary-btn">🔔 Enable & Save Reminders (+3 ⚡)</button>
+        <button id="btn-test-notification" class="icon-btn active">⚡ Send Test Notification Now</button>
+        <button id="btn-close-pwa" class="icon-btn">Close</button>
       </div>
     </div>
   </div>
